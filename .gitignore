@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+shadowscout.db
+.bookmaker_profiles/
