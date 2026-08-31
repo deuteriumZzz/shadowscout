@@ -1,0 +1,60 @@
+<svg width="1280" height="320" viewBox="0 0 1280 320" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#020617"/>
+      <stop offset="1" stop-color="#0b1224"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(210 150) rotate(90) scale(220 520)">
+      <stop offset="0" stop-color="#22c55e" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#22c55e" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#334155" stroke-width="1"/>
+    </pattern>
+    <mask id="fade">
+      <rect width="1280" height="320" fill="url(#fadegrad)"/>
+    </mask>
+    <linearGradient id="fadegrad" x1="0" y1="0" x2="1280" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="0.75" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bg)"/>
+  <rect width="1280" height="320" fill="url(#grid)" mask="url(#fade)"/>
+  <rect width="1280" height="320" fill="url(#glow)"/>
+
+  <!-- scanner / ball mark -->
+  <g transform="translate(120,160)">
+    <circle r="54" fill="none" stroke="#22c55e" stroke-width="2.4"/>
+    <path d="M0 -34 27.9 -14.7 17.2 18.7 H-17.2 L-27.9 -14.7 Z" fill="none" stroke="#22c55e" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M0 -34 V-52 M27.9 -14.7 43.3 -25.7 M17.2 18.7 26.6 47.6 M-17.2 18.7 -26.6 47.6 M-27.9 -14.7 -43.3 -25.7" stroke="#22c55e" stroke-width="2.4" stroke-linecap="round"/>
+    <circle r="4" fill="#22c55e"/>
+  </g>
+
+  <text x="216" y="150" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="56" font-weight="700" fill="#f8fafc" letter-spacing="-1">shadowscout</text>
+  <text x="218" y="188" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="20" fill="#94a3b8">Анализ футбольных ставок под судейством математики рынка</text>
+
+  <!-- stat chips -->
+  <g font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="600">
+    <g transform="translate(218,222)">
+      <rect width="172" height="34" rx="17" fill="#0e1223" stroke="#334155"/>
+      <text x="17" y="22" fill="#22c55e">edge против рынка</text>
+    </g>
+    <g transform="translate(402,222)">
+      <rect width="156" height="34" rx="17" fill="#0e1223" stroke="#334155"/>
+      <text x="17" y="22" fill="#38bdf8">модель Пуассона</text>
+    </g>
+    <g transform="translate(570,222)">
+      <rect width="164" height="34" rx="17" fill="#0e1223" stroke="#334155"/>
+      <text x="17" y="22" fill="#f59e0b">CLV и калибровка</text>
+    </g>
+    <g transform="translate(746,222)">
+      <rect width="160" height="34" rx="17" fill="#0e1223" stroke="#334155"/>
+      <text x="17" y="22" fill="#f8fafc">Мини-приложение</text>
+    </g>
+  </g>
+
+  <line x1="0" y1="319" x2="1280" y2="319" stroke="#22c55e" stroke-opacity="0.6" stroke-width="2"/>
+</svg>
