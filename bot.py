@@ -16,14 +16,14 @@ import asyncio
 import logging
 from datetime import time
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonWebApp, Update, WebAppInfo
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 import bookmakers
 import browser_session
 import storage
 from analysis import analyze_match, check_late_news, check_result, scan_league
-from config import BOOKMAKER_ADAPTER, BOOKMAKER_SITE, ODDS_API_KEY, TELEGRAM_BOT_TOKEN
+from config import BOOKMAKER_ADAPTER, BOOKMAKER_SITE, MINIAPP_URL, ODDS_API_KEY, TELEGRAM_BOT_TOKEN
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("shadowscout")
@@ -83,7 +83,12 @@ def _chat_sender(bot, chat_id):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage.set_setting("chat_id", str(update.effective_chat.id))
-    await update.message.reply_text(HELP_TEXT)
+    buttons = None
+    if MINIAPP_URL:
+        buttons = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📊 Открыть дашборд", web_app=WebAppInfo(url=MINIAPP_URL))
+        ]])
+    await update.message.reply_text(HELP_TEXT, reply_markup=buttons)
 
 
 def _parse_match_args(raw: str) -> tuple[str, str, str | None] | None:
@@ -468,9 +473,16 @@ async def digest_job(context: ContextTypes.DEFAULT_TYPE):
             await _deliver_result(send, result, league, full_text=False)
 
 
+async def _post_init(app: Application):
+    if MINIAPP_URL:
+        await app.bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="Дашборд", web_app=WebAppInfo(url=MINIAPP_URL))
+        )
+
+
 def main():
     storage.init_db()
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("match", match_cmd))
