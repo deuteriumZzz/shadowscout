@@ -63,3 +63,19 @@ BOOKMAKER_SITE = os.environ.get("BOOKMAKER_SITE", "leon")
 # actually be able to get at the one book BOOKMAKER_SITE opens for you.
 # Unset (default): every price is best-of-market and flagged unverified.
 EXECUTION_BOOKMAKER = os.environ.get("EXECUTION_BOOKMAKER") or None
+
+# --- Telegram Mini App (webapp_api/) -----------------------------------
+# Numeric Telegram user id of the bot's owner — the only identity the Mini
+# App API will accept, regardless of how well-formed a request's initData
+# is. Required to run webapp_api (not required for bot.py alone), since
+# unlike the bot itself (which only replies in the chat that messaged it)
+# the API is reachable by anyone who can reach its URL.
+OWNER_TELEGRAM_ID = int(os.environ["OWNER_TELEGRAM_ID"]) if os.environ.get("OWNER_TELEGRAM_ID") else None
+
+# Comma-separated allowed CORS origin(s) for the Mini App frontend, e.g.
+# "https://shadowscout-miniapp.vercel.app". Required to run webapp_api.
+MINIAPP_ORIGIN = os.environ.get("MINIAPP_ORIGIN") or None
+
+# Public HTTPS URL of the deployed Mini App frontend — bot.py points its
+# menu button / WebAppInfo here. Unset: no menu button is registered.
+MINIAPP_URL = os.environ.get("MINIAPP_URL") or None

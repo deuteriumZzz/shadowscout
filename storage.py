@@ -329,6 +329,27 @@ def bankroll_status() -> dict | None:
     }
 
 
+def list_pending_picks(limit: int = 50) -> list[sqlite3.Row]:
+    """Active recommendations awaiting a place/skip decision — the Mini
+    App's feed tab. Newest first."""
+    with closing(_connect()) as conn:
+        return conn.execute(
+            "SELECT * FROM picks WHERE status = 'pending' ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+
+def list_settled_picks(limit: int = 100) -> list[sqlite3.Row]:
+    """Placed picks with a known result — the Mini App's history tab.
+    Mirrors stats()'s own row selection (status='placed' AND result set)."""
+    with closing(_connect()) as conn:
+        return conn.execute(
+            "SELECT * FROM picks WHERE status = 'placed' AND result IS NOT NULL "
+            "ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+
 def place(pick_id: int, stake: float | None):
     with closing(_connect()) as conn, conn:
         conn.execute("UPDATE picks SET status = 'placed', stake = ? WHERE id = ?", (stake, pick_id))
