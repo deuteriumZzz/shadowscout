@@ -46,6 +46,16 @@ def find_team_id(name: str, api_key: str) -> int | None:
     return results[0]["team"]["id"] if results else None
 
 
+def find_team_name(name: str, api_key: str) -> str | None:
+    """Canonical English team name (e.g. "Real Madrid" for "Реал Мадрид") —
+    xg_model.py uses this to resolve Understat's own team-page title, since
+    Understat has no name search of its own. Same search call as
+    find_team_id(); the two share _get()'s cache, so calling both for the
+    same name+key costs one HTTP request, not two."""
+    results = _get("teams", api_key, {"search": name})
+    return results[0]["team"]["name"] if results else None
+
+
 def recent_form(team_id: int, api_key: str, last: int = 5) -> list[dict]:
     fixtures = _get("fixtures", api_key, {"team": team_id, "last": last})
     return [

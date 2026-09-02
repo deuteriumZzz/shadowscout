@@ -75,6 +75,11 @@ def get_stats(league: Optional[str] = None, _owner: dict = Depends(require_owner
     return storage.stats(league=league)
 
 
+@app.get("/api/equity-curve")
+def get_equity_curve(_owner: dict = Depends(require_owner)):
+    return storage.equity_curve()
+
+
 @app.get("/api/settings/digest")
 def get_digest_settings(_owner: dict = Depends(require_owner)):
     return {"leagues": storage.get_setting("digest_leagues")}

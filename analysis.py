@@ -7,11 +7,14 @@ user — the "don't lose to the vig" gate, per market, provider-agnostic.
 Guards beyond the edge check itself: a market needs enough corroborating
 bookmakers before its price is trusted (bookmakers.py's `trusted` flag — a
 single stale/outlier quote isn't a signal); where API_FOOTBALL_KEY is
-available, an LLM-independent Poisson goal-rate model (poisson_model.py) is
-shown to the LLM as a second opinion and stored alongside the pick; and once
-enough settled history exists, the LLM's raw stated probability is passed
-through calibration.py's Platt-scaling fit before the edge check, instead of
-trusting it as-is forever."""
+available, two LLM-independent statistical cross-checks are shown to the LLM
+as second opinions and stored alongside the pick — a Poisson goal-rate model
+(poisson_model.py, from realized scoring/conceding) and a Poisson xG model
+(xg_model.py, from Understat's shot-quality data, so it isn't fooled by the
+same finishing variance the goals-based one can be); and once enough settled
+history exists, the LLM's raw stated probability is passed through
+calibration.py's Platt-scaling fit before the edge check, instead of trusting
+it as-is forever."""
 
 from __future__ import annotations
 
@@ -25,7 +28,8 @@ import calibration
 import football_data
 import llm_providers
 import poisson_model
-from config import API_FOOTBALL_KEY, BOOKMAKER_ADAPTER, LLM_PROVIDER, MIN_MODEL_PROBABILITY, ODDS_API_KEY
+import xg_model
+from config import API_FOOTBALL_KEY, BOOKMAKER_ADAPTER, MIN_MODEL_PROBABILITY, ODDS_API_KEY
 
 EDGE_THRESHOLD = 0.05  # minimum probability edge over the fair market price to recommend a bet
 LEAGUE_SCAN_LIMIT = 12  # fixtures per /league scan — each one is a full LLM call, so this caps cost
@@ -47,19 +51,22 @@ def _parse_json_block(text: str) -> dict | None:
         return None
 
 
-def _stats_context(team_a: str, team_b: str, total_point: float = 2.5) -> tuple[str, dict | None]:
-    """Returns (context_text_for_the_prompt, poisson_probabilities_or_None).
-    Both come from API_FOOTBALL_KEY — recent-form/h2h text for the LLM's own
-    research, and an independent Poisson goal-rate estimate (poisson_model.py)
-    that the LLM has no control over, so its own stated probability isn't
-    graded solely by the system that produced it."""
+def _stats_context(team_a: str, team_b: str, total_point: float = 2.5) -> tuple[str, dict | None, dict | None]:
+    """Returns (context_text_for_the_prompt, poisson_probabilities_or_None,
+    xg_probabilities_or_None). All come from API_FOOTBALL_KEY — recent-form/
+    h2h text for the LLM's own research, an independent Poisson goal-rate
+    estimate (poisson_model.py), and a second independent estimate from
+    shot-quality xG (xg_model.py, via Understat) — neither the LLM nor each
+    other controls these, so the LLM's own stated probability isn't graded
+    solely by the system that produced it, and goals-based vs xG-based
+    disagreement is itself informative (finishing variance vs real chances)."""
     if not API_FOOTBALL_KEY:
-        return "", None
+        return "", None, None
     try:
         id_a = football_data.find_team_id(team_a, API_FOOTBALL_KEY)
         id_b = football_data.find_team_id(team_b, API_FOOTBALL_KEY)
         if not (id_a and id_b):
-            return "", None
+            return "", None, None
         form_a = football_data.recent_form(id_a, API_FOOTBALL_KEY)
         form_b = football_data.recent_form(id_b, API_FOOTBALL_KEY)
         h2h = football_data.head_to_head(id_a, id_b, API_FOOTBALL_KEY)
@@ -76,16 +83,26 @@ def _stats_context(team_a: str, team_b: str, total_point: float = 2.5) -> tuple[
                 f"knowledge of injuries, motivation, or lineup news, so weigh it against what you find "
                 f"yourself rather than deferring to it.\n"
             )
-        return text, poisson
+
+        xg = xg_model.match_probabilities(team_a, team_b, API_FOOTBALL_KEY, total_point)
+        if xg:
+            eg = xg["expected_goals"]
+            text += (
+                f"\nIndependent xG-based model (shot-quality expected goals from Understat, not "
+                f"realized scoring — filters out finishing variance) — expected goals: {team_a} "
+                f"{eg['home']:.2f}, {team_b} {eg['away']:.2f}. 1X2: {xg['h2h']}. Totals "
+                f"({total_point}): {xg['totals']}. Also just one more input, not ground truth.\n"
+            )
+        return text, poisson, xg
     except requests.RequestException:
-        return "", None
+        return "", None, None
 
 
 def analyze_match(team_a: str, team_b: str, league_hint: str | None = None) -> dict:
     adapter = bookmakers.get_adapter(BOOKMAKER_ADAPTER)
     market_data = {m: adapter.get_market(team_a, team_b, league_hint, m, ODDS_API_KEY) for m in bookmakers.MARKETS}
     totals_point = float(market_data["totals"]["line"]) if market_data["totals"]["line"] else 2.5
-    stats_text, poisson = _stats_context(team_a, team_b, totals_point)
+    stats_text, poisson, xg = _stats_context(team_a, team_b, totals_point)
 
     context_blocks = [d["context_text"] for d in market_data.values() if d["context_text"]]
     market_text = "\n".join(context_blocks)
@@ -122,7 +139,7 @@ for that outcome is meaningfully higher (at least 5 percentage points) than the 
 probability given above for that market. If a market had no odds context, only pick when your own \
 confidence is high — otherwise skip. It's normal and expected for most markets to come back "skip"."""
 
-    provider = llm_providers.get_provider(LLM_PROVIDER)
+    provider = llm_providers.get_provider_chain()
     text = provider.analyze(team_a, team_b, league_hint, user_prompt)
     parsed = _parse_json_block(text) or {}
     markets_out = parsed.get("markets", {})
@@ -160,6 +177,7 @@ confidence is high — otherwise skip. It's normal and expected for most markets
             continue
 
         poisson_p = poisson.get(market_key, {}).get(pick) if poisson else None
+        xg_p = xg.get(market_key, {}).get(pick) if xg else None
         odds, price_verified = adapter.price_for(market_data[market_key]["event"], market_key, pick)
 
         picks.append({
@@ -174,6 +192,7 @@ confidence is high — otherwise skip. It's normal and expected for most markets
             "model_probability": model_p,
             "calibrated_probability": calibrated_p,
             "poisson_probability": poisson_p,
+            "xg_probability": xg_p,
         })
 
     return {
@@ -202,7 +221,7 @@ def check_result(match: str, market_label: str, pick: str) -> dict:
     the final score means for this pick. Never writes anything itself —
     bot.py only calls storage.settle()/record_result() after resolving it."""
     team_a, team_b = (t.strip() for t in match.split(" - ", 1))
-    provider = llm_providers.get_provider(LLM_PROVIDER)
+    provider = llm_providers.get_provider_chain()
     prompt = f"""Has the football match {match} finished? Search for the final score.
 Market: {market_label}. The tracked pick was: {pick}.
 Respond with only a fenced ```json block: {{"finished": true|false, "final_score": "H-A or null", \
@@ -217,7 +236,7 @@ def check_late_news(match: str) -> str:
     """Lightweight pre-kickoff recheck — not a full re-analysis, just
     "did anything material change" (lineup news, a late injury)."""
     team_a, team_b = (t.strip() for t in match.split(" - ", 1))
-    provider = llm_providers.get_provider(LLM_PROVIDER)
+    provider = llm_providers.get_provider_chain()
     prompt = (
         f"Quick check only: any late team news for {match} in the last few hours — confirmed "
         f"lineups, a key player ruled out, a surprising bench decision? A few sentences in Russian, "

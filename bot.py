@@ -147,6 +147,11 @@ async def _deliver_result(send, result: dict, league: str | None, *, full_text: 
             summary += f"\nПуассон-модель (независимая): {p['poisson_probability']:.0%}"
             if abs(diff) > POISSON_DIVERGENCE_FLAG:
                 summary += f" ⚠️ расхождение с оценкой LLM: {diff:+.0%}"
+        if p.get("xg_probability") is not None:
+            diff = p["model_probability"] - p["xg_probability"]
+            summary += f"\nxG-модель (Understat, независимая): {p['xg_probability']:.0%}"
+            if abs(diff) > POISSON_DIVERGENCE_FLAG:
+                summary += f" ⚠️ расхождение с оценкой LLM: {diff:+.0%}"
         summary += stake_note
 
         recommended_stake = None
@@ -160,6 +165,7 @@ async def _deliver_result(send, result: dict, league: str | None, *, full_text: 
             confidence=p["confidence"], reasoning="; ".join(result["key_factors"]),
             commence_time=result["commence_time"],
             model_probability=p["model_probability"], poisson_probability=p.get("poisson_probability"),
+            xg_probability=p.get("xg_probability"),
             price_verified=p["price_verified"], recommended_stake=recommended_stake,
         )
 

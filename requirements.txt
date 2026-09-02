@@ -12,3 +12,6 @@ uvicorn[standard]>=0.32
 # Only needed for LLM_PROVIDER=groq (free-tier alternative to Claude)
 groq>=0.11
 ddgs>=9.0
+
+# Only needed for LLM_PROVIDER=gemini or LLM_FALLBACK_PROVIDERS containing "gemini"
+google-genai>=1.0

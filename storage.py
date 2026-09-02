@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS picks (
     news_checked INTEGER NOT NULL DEFAULT 0, -- whether the pre-kickoff news recheck has fired
     model_probability REAL,                  -- LLM's own stated probability for the pick, for calibration
     poisson_probability REAL,                -- independent Poisson-model probability, if available
+    xg_probability REAL,                     -- independent xG-based (Understat) probability, if available
     price_verified INTEGER NOT NULL DEFAULT 0, -- 1 if `odds` is EXECUTION_BOOKMAKER's own quote, 0 if best-of-market
     recommended_stake REAL,                  -- stake shown to the user at recommendation time (correlation-adjusted)
     steam_checked INTEGER NOT NULL DEFAULT 0 -- whether the pre-kickoff line-movement check has fired
@@ -83,6 +84,7 @@ def _migrate(conn):
     for column, decl in (
         ("model_probability", "REAL"),
         ("poisson_probability", "REAL"),
+        ("xg_probability", "REAL"),
         ("price_verified", "INTEGER NOT NULL DEFAULT 0"),
         ("recommended_stake", "REAL"),
         ("steam_checked", "INTEGER NOT NULL DEFAULT 0"),
@@ -104,15 +106,16 @@ def _parse_iso(ts: str) -> datetime:
 def save_pick(league: str, match: str, market: str, pick: str, odds: float | None,
               confidence: str, reasoning: str, commence_time: str | None,
               model_probability: float | None = None, poisson_probability: float | None = None,
+              xg_probability: float | None = None,
               price_verified: bool = False, recommended_stake: float | None = None) -> int:
     with closing(_connect()) as conn, conn:
         cur = conn.execute(
             "INSERT INTO picks (created_at, league, match, market, pick, odds, confidence, "
-            "reasoning, commence_time, model_probability, poisson_probability, price_verified, "
-            "recommended_stake) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "reasoning, commence_time, model_probability, poisson_probability, xg_probability, "
+            "price_verified, recommended_stake) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (datetime.now(timezone.utc).isoformat(), league, match, market, pick, odds,
              confidence, reasoning, commence_time, model_probability, poisson_probability,
-             int(price_verified), recommended_stake),
+             xg_probability, int(price_verified), recommended_stake),
         )
         return cur.lastrowid
 
@@ -480,3 +483,35 @@ def stats(league: str | None = None) -> dict:
         "calibration_sample": len(calib_rows),
         "low_sample": settled < MIN_SAMPLE_FOR_STATS,
     }
+
+
+def equity_curve() -> list[dict]:
+    """Running cumulative profit over every placed, settled pick — same
+    population and same two profit conventions as stats() (unit-stake and
+    real-currency), just as a series instead of one final aggregate. Ordered
+    by created_at (when the pick was made): picks has no separate "settled
+    at" timestamp, so this is the closest chronological ordering available —
+    close enough since settlement follows kickoff shortly after the pick."""
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            "SELECT created_at, odds, stake, result FROM picks "
+            "WHERE status = 'placed' AND result IS NOT NULL ORDER BY created_at ASC"
+        ).fetchall()
+
+    points = []
+    cum_units = cum_currency = 0.0
+    for r in rows:
+        if r["result"] == "win":
+            cum_units += (r["odds"] or 0) - 1
+            if r["stake"]:
+                cum_currency += r["stake"] * ((r["odds"] or 1) - 1)
+        elif r["result"] == "loss":
+            cum_units -= 1
+            if r["stake"]:
+                cum_currency -= r["stake"]
+        points.append({
+            "date": r["created_at"],
+            "cumulative_units": round(cum_units, 4),
+            "cumulative_currency": round(cum_currency, 2),
+        })
+    return points

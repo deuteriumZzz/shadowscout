@@ -8,6 +8,10 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
 # Optional enrichers — bot works without them (Claude's own web search fills the
 # gap), but odds/stats from real APIs are more reliable than a search result.
+# API_FOOTBALL_KEY also gates poisson_model.py's goal-rate cross-check AND
+# xg_model.py's shot-quality (xG, via Understat) cross-check — the latter
+# only resolves team names through API-Football, Understat itself has no
+# search of its own.
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 
@@ -16,10 +20,18 @@ API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 BOOKMAKER_ADAPTER = os.environ.get("BOOKMAKER_ADAPTER", "the_odds_api")
 
 # Which llm_providers.py adapter does the analysis — "claude" (default,
-# native web search, best quality) or "groq" (free tier, weaker + needs
-# GROQ_API_KEY). See llm_providers.py.
+# native web search, best quality), "groq" (free tier, weaker + needs
+# GROQ_API_KEY), or "gemini" (free tier, native search grounding + needs
+# GEMINI_API_KEY). See llm_providers.py.
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "claude")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Comma-separated providers to fall through to, in order, when LLM_PROVIDER
+# hits a rate limit or exhausted quota (e.g. "groq,gemini") — never on any
+# other kind of error, see llm_providers.py's _is_rate_limited(). Empty
+# (default): no fallback, identical to before this existed.
+LLM_FALLBACK_PROVIDERS = os.environ.get("LLM_FALLBACK_PROVIDERS", "")
 
 # Extra confidence gate on top of the edge check: a pick must also have a
 # model-estimated probability >= this to surface. 0 = off (edge alone
