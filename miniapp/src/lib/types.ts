@@ -78,6 +78,13 @@ export interface EquityPoint {
   cumulative_currency: number;
 }
 
+export interface BacktestResult {
+  n: number;
+  brier: number | null;
+  hit_rate: number | null;
+  league_id: number | null;
+}
+
 export const MARKET_LABEL: Record<Market, string> = {
   h2h: "1X2",
   totals: "Тоталы",

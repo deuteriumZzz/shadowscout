@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
+  BacktestResult,
   BankrollStatus,
   DigestSettings,
   EquityPoint,
@@ -56,6 +57,13 @@ export function useEquityCurve() {
   return useQuery({
     queryKey: ["equity-curve"],
     queryFn: () => api.get<EquityPoint[]>("/api/equity-curve"),
+  });
+}
+
+export function useBacktest() {
+  return useMutation({
+    mutationFn: ({ league, season }: { league: string; season: number }) =>
+      api.get<BacktestResult>(`/api/backtest?league=${encodeURIComponent(league)}&season=${season}`),
   });
 }
 
