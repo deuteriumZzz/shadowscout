@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import type {
   BankrollStatus,
   DigestSettings,
+  EquityPoint,
   Pick,
   PlacePickResponse,
   Stats,
@@ -48,6 +49,13 @@ export function useStats(league?: string) {
   return useQuery({
     queryKey: ["stats", league ?? null],
     queryFn: () => api.get<Stats>(`/api/stats${league ? `?league=${encodeURIComponent(league)}` : ""}`),
+  });
+}
+
+export function useEquityCurve() {
+  return useQuery({
+    queryKey: ["equity-curve"],
+    queryFn: () => api.get<EquityPoint[]>("/api/equity-curve"),
   });
 }
 

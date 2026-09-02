@@ -2,18 +2,22 @@
 
 import { AlertTriangle, BarChart3, Check, X } from "lucide-react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Legend,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { EmptyState, ErrorState, LoadingState } from "@/components/status-state";
-import { useStats } from "@/hooks/use-shadowscout";
+import { useEquityCurve, useStats } from "@/hooks/use-shadowscout";
 import { formatPct } from "@/lib/format";
+import type { EquityPoint } from "@/lib/types";
 
 // Fixed status colors (never themed) — see the dataviz skill's reference
 // palette. Win/loss is inherently a red/green pair, which fails
@@ -28,6 +32,60 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="font-mono tabular-nums text-xl font-semibold">{value}</span>
       {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+    </div>
+  );
+}
+
+function formatChartDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+}
+
+function EquityCurveChart() {
+  const { data, isPending, isError } = useEquityCurve();
+
+  // Silent no-render on load/error/too-few-points — this is a bonus visual
+  // inside an already-loaded Statistics screen, not worth its own
+  // loading/error UI competing with the panel's main content.
+  if (isPending || isError || !data || data.length < 2) return null;
+
+  const rows = data.map((p: EquityPoint) => ({ ...p, label: formatChartDate(p.date) }));
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <p className="text-sm font-medium mb-3">Капитал во времени (в юнитах)</p>
+      <ResponsiveContainer width="100%" height={180}>
+        <AreaChart data={rows} margin={{ left: -16, right: 8, top: 8, bottom: 0 }}>
+          <defs>
+            <linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} stroke="var(--border)" />
+          <XAxis dataKey="label" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} />
+          <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} width={40} />
+          <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="3 3" />
+          <Tooltip
+            formatter={(value) => [`${Number(value).toFixed(2)} юнитов`, "Кумулятив"]}
+            labelFormatter={(label) => label}
+            contentStyle={{
+              background: "var(--popover)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "var(--popover-foreground)",
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="cumulative_units"
+            stroke="var(--primary)"
+            strokeWidth={2}
+            fill="url(#equityFill)"
+          />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -107,6 +165,8 @@ export function StatsPanel() {
           </span>
         </div>
       )}
+
+      <EquityCurveChart />
 
       {leagueRows.length > 0 && (
         <div className="rounded-xl border border-border bg-card p-4">

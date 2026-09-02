@@ -24,6 +24,7 @@ export interface Pick {
   closing_odds: number | null;
   model_probability: number | null;
   poisson_probability: number | null;
+  xg_probability: number | null;
   price_verified: 0 | 1;
   recommended_stake: number | null;
 }
@@ -69,6 +70,12 @@ export interface Stats {
 
 export interface DigestSettings {
   leagues: string | null;
+}
+
+export interface EquityPoint {
+  date: string;
+  cumulative_units: number;
+  cumulative_currency: number;
 }
 
 export const MARKET_LABEL: Record<Market, string> = {

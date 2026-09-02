@@ -28,6 +28,11 @@ export function PickCard({ pick }: { pick: Pick }) {
     pick.poisson_probability != null &&
     Math.abs(pick.model_probability - pick.poisson_probability) > POISSON_DIVERGENCE_FLAG;
 
+  const xgDiverges =
+    pick.model_probability != null &&
+    pick.xg_probability != null &&
+    Math.abs(pick.model_probability - pick.xg_probability) > POISSON_DIVERGENCE_FLAG;
+
   async function handlePlace() {
     setError(null);
     haptic("medium");
@@ -109,6 +114,14 @@ export function PickCard({ pick }: { pick: Pick }) {
             Пуассон: {formatProbability(pick.poisson_probability)}
             {diverges && (
               <AlertTriangle className="size-3 text-warning" aria-label="Расхождение с моделью Пуассона" />
+            )}
+          </span>
+        )}
+        {pick.xg_probability != null && (
+          <span className="font-mono tabular-nums flex items-center gap-1">
+            xG: {formatProbability(pick.xg_probability)}
+            {xgDiverges && (
+              <AlertTriangle className="size-3 text-warning" aria-label="Расхождение с xG-моделью" />
             )}
           </span>
         )}
