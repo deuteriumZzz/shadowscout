@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>shadowscout</title>
+  <style>
+    body { width: 340px; font-family: -apple-system, sans-serif; background: #0e1223; color: #f8fafc; margin: 0; padding: 12px; }
+    h1 { font-size: 14px; margin: 0 0 10px; }
+    .settings { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .settings input { background: #1e293b; border: 1px solid #334155; color: #f8fafc; border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+    .settings button, .pick button { background: #22c55e; color: #052e16; border: none; border-radius: 6px; padding: 6px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .pick { border: 1px solid #334155; border-radius: 8px; padding: 10px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .pick .match { font-weight: 600; font-size: 13px; }
+    .pick .details { font-size: 12px; color: #94a3b8; }
+    .status { font-size: 11px; margin-top: 4px; }
+    .empty { font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <h1>shadowscout</h1>
+  <div class="settings">
+    <input id="apiBase" placeholder="https://ваш-api-хост" />
+    <input id="token" placeholder="EXTENSION_API_TOKEN" type="password" />
+    <button id="save">Сохранить настройки</button>
+  </div>
+  <div id="picks"><p class="empty">Загружаю…</p></div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -76,6 +76,13 @@ BOOKMAKER_SITE = os.environ.get("BOOKMAKER_SITE", "leon")
 # Unset (default): every price is best-of-market and flagged unverified.
 EXECUTION_BOOKMAKER = os.environ.get("EXECUTION_BOOKMAKER") or None
 
+# Shared secret for extension/ (the browser extension that auto-fills a
+# bet slip) — it runs on the bookmaker's own site, not inside Telegram, so
+# it has no initData to authenticate with and uses this bearer token
+# instead. Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
+# Unset (default): the extension's API routes are disabled entirely.
+EXTENSION_API_TOKEN = os.environ.get("EXTENSION_API_TOKEN") or None
+
 # --- Telegram Mini App (webapp_api/) -----------------------------------
 # Numeric Telegram user id of the bot's owner — the only identity the Mini
 # App API will accept, regardless of how well-formed a request's initData

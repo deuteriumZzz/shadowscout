@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "shadowscout — автозаполнение купона",
+  "version": "0.1.0",
+  "description": "Показывает рекомендацию shadowscout и подставляет сумму ставки в купон букмекера — никогда не отправляет ставку сама.",
+  "action": { "default_popup": "popup.html" },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.1xbet.com/*", "*://*.fonbet.ru/*", "*://*.bet365.com/*", "*://*.winline.ru/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

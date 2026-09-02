@@ -18,7 +18,7 @@ import backtest
 import browser_session
 import storage
 from config import API_FOOTBALL_KEY, BOOKMAKER_SITE, MINIAPP_ORIGIN
-from webapp_api.auth import require_owner
+from webapp_api.auth import require_extension_token, require_owner
 
 log = logging.getLogger("shadowscout.webapp_api")
 
@@ -86,6 +86,28 @@ async def run_backtest(league: str, season: int, _owner: dict = Depends(require_
     if not API_FOOTBALL_KEY:
         raise HTTPException(400, "API_FOOTBALL_KEY is not configured")
     return await asyncio.to_thread(backtest.backtest_league, league, season, API_FOOTBALL_KEY)
+
+
+# --- extension/ (bet-slip auto-fill browser extension) --------------------
+# Separate auth (require_extension_token, not require_owner) since this runs
+# on the bookmaker's own site, outside Telegram — see webapp_api/auth.py.
+
+@app.get("/api/extension/pending-picks")
+def get_pending_picks_for_extension(_auth: None = Depends(require_extension_token)):
+    picks = _rows(storage.list_pending_picks())
+    bankroll = storage.bankroll_status()
+    fallback_stake = bankroll["suggested_stake"] if bankroll and not bankroll["stopped"] else None
+    return [
+        {
+            "id": p["id"],
+            "match": p["match"],
+            "market_label": p["market"],
+            "pick": p["pick"],
+            "odds": p["odds"],
+            "stake": p["recommended_stake"] if p["recommended_stake"] is not None else fallback_stake,
+        }
+        for p in picks
+    ]
 
 
 @app.get("/api/settings/digest")

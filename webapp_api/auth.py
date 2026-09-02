@@ -16,7 +16,7 @@ from urllib.parse import parse_qsl
 
 from fastapi import Header, HTTPException
 
-from config import OWNER_TELEGRAM_ID, TELEGRAM_BOT_TOKEN
+from config import EXTENSION_API_TOKEN, OWNER_TELEGRAM_ID, TELEGRAM_BOT_TOKEN
 
 # How long an initData payload stays acceptable after Telegram signed it —
 # see PRODUCT.md's Operating Context. Generous on purpose: a Mini App
@@ -64,3 +64,17 @@ async def require_owner(authorization: str = Header(...)) -> dict:
     if scheme.lower() != "tma" or not init_data:
         raise HTTPException(401, "Expected 'Authorization: tma <initData>'")
     return verify_init_data(init_data)
+
+
+async def require_extension_token(authorization: str = Header(...)) -> None:
+    """FastAPI dependency for extension/ (the bet-slip auto-fill browser
+    extension) — it runs on the bookmaker's own site, not inside Telegram,
+    so it has no initData and authenticates with a plain shared secret
+    instead. Expects `Authorization: Bearer <EXTENSION_API_TOKEN>`."""
+    if not EXTENSION_API_TOKEN:
+        raise HTTPException(500, "EXTENSION_API_TOKEN not configured on the server")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(401, "Expected 'Authorization: Bearer <token>'")
+    if not hmac.compare_digest(token, EXTENSION_API_TOKEN):
+        raise HTTPException(403, "Invalid extension token")
