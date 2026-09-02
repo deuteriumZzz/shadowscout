@@ -8,10 +8,10 @@ on a live web search grounded in "now" — there's no way to point it at "as
 of last March" and get a faithful historical answer, so its edge can only be
 validated forward (CLV, calibration — see storage.py) rather than backward.
 
-You supply the match list (e.g. built from football_data.season_results()
-for the teams you care about) rather than this module crawling a whole
-league itself — crawling a full league's fixture list needs a "teams in
-league X" endpoint this codebase hasn't verified against a live key yet.
+backtest_matches() takes a caller-supplied match list; backtest_league() is
+the convenience wrapper that builds one from a whole league+season via
+football_data.league_fixtures() — see that function's own docstring for the
+one live-key verification this still needs before trusting it fully.
 """
 
 from __future__ import annotations
@@ -61,6 +61,34 @@ def backtest_matches(
     return {"n": n, "brier": brier_sum / (n * 3), "hit_rate": hits / n}
 
 
+def backtest_league(league_name: str, season: int, api_key: str, history_window: int = HISTORY_WINDOW) -> dict:
+    """Resolves league_name to an API-Football league id, pulls every
+    finished fixture for that league+season, and runs backtest_matches()
+    over the lot. Returns backtest_matches()'s own {"n","brier","hit_rate"}
+    shape plus "league_id" — or {"n": 0, "brier": None, "hit_rate": None,
+    "league_id": None} if the league name doesn't resolve at all."""
+    league_id = football_data.find_league_id(league_name, api_key)
+    if league_id is None:
+        return {"n": 0, "brier": None, "hit_rate": None, "league_id": None}
+
+    fixtures = football_data.league_fixtures(league_id, season, api_key)
+    matches = [
+        (
+            f["teams"]["home"]["id"],
+            f["teams"]["away"]["id"],
+            f["fixture"]["date"],
+            "home" if f["goals"]["home"] > f["goals"]["away"]
+            else "away" if f["goals"]["away"] > f["goals"]["home"]
+            else "draw",
+        )
+        for f in fixtures
+        if f["goals"]["home"] is not None and f["goals"]["away"] is not None
+    ]
+    result = backtest_matches(matches, api_key, history_window)
+    result["league_id"] = league_id
+    return result
+
+
 def demo():
     """Self-check: synthetic fixture history where the model's implied
     favorite should genuinely tend to win more, using a fixed goal_rates
@@ -93,7 +121,24 @@ def demo():
         empty = backtest_matches(matches, "fake_key")
     assert empty == {"n": 0, "brier": None, "hit_rate": None}
 
-    print("backtest.py self-check OK:", result)
+    # backtest_league(): fake fixtures shaped like API-Football's response,
+    # fed through the same goal_rates mock above
+    fake_fixtures = [
+        {"teams": {"home": {"id": 1}, "away": {"id": 2}}, "fixture": {"date": "2026-01-01"}, "goals": {"home": 3, "away": 0}},
+        {"teams": {"home": {"id": 2}, "away": {"id": 1}}, "fixture": {"date": "2026-02-01"}, "goals": {"home": 0, "away": 2}},
+        {"teams": {"home": {"id": 2}, "away": {"id": 1}}, "fixture": {"date": "2026-03-01"}, "goals": {"home": None, "away": None}},  # unplayed, excluded
+    ]
+    with mock.patch.object(football_data, "find_league_id", return_value=39), \
+         mock.patch.object(football_data, "league_fixtures", return_value=fake_fixtures), \
+         mock.patch.object(football_data, "goal_rates", side_effect=fake_goal_rates):
+        league_result = backtest_league("АПЛ", 2025, "fake_key")
+    assert league_result["league_id"] == 39
+    assert league_result["n"] == 2, "the unplayed fixture (null goals) must be excluded"
+
+    with mock.patch.object(football_data, "find_league_id", return_value=None):
+        assert backtest_league("Nonexistent League", 2025, "fake_key")["league_id"] is None
+
+    print("backtest.py self-check OK:", result, league_result)
 
 
 if __name__ == "__main__":

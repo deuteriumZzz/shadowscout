@@ -133,6 +133,23 @@ def season_results(team_id: int, season: int, api_key: str) -> list[dict]:
     return [f for f in fixtures if f["fixture"]["status"]["short"] == "FT"]
 
 
+def find_league_id(name: str, api_key: str) -> int | None:
+    """Same shape as find_team_id() — API-Football's /leagues search,
+    unverified against a live key here, check a real response before
+    trusting the "league"/"id" nesting for an unfamiliar competition."""
+    results = _get("leagues", api_key, {"search": name})
+    return results[0]["league"]["id"] if results else None
+
+
+def league_fixtures(league_id: int, season: int, api_key: str) -> list[dict]:
+    """Finished fixtures for an entire league+season in one call — the
+    "teams in league X" gap backtest.py's own docstring used to flag doesn't
+    need filling after all, since /fixtures itself takes a `league` param
+    directly. Same "verify before relying on it" caveat as season_results()."""
+    fixtures = _get("fixtures", api_key, {"league": league_id, "season": season})
+    return [f for f in fixtures if f["fixture"]["status"]["short"] == "FT"]
+
+
 def demo():
     """Self-check for _get()'s cache — the free API-Football tier is 100
     requests/day, so a caching bug that silently stops caching (or caches

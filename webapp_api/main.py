@@ -14,9 +14,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+import backtest
 import browser_session
 import storage
-from config import BOOKMAKER_SITE, MINIAPP_ORIGIN
+from config import API_FOOTBALL_KEY, BOOKMAKER_SITE, MINIAPP_ORIGIN
 from webapp_api.auth import require_owner
 
 log = logging.getLogger("shadowscout.webapp_api")
@@ -78,6 +79,13 @@ def get_stats(league: Optional[str] = None, _owner: dict = Depends(require_owner
 @app.get("/api/equity-curve")
 def get_equity_curve(_owner: dict = Depends(require_owner)):
     return storage.equity_curve()
+
+
+@app.get("/api/backtest")
+async def run_backtest(league: str, season: int, _owner: dict = Depends(require_owner)):
+    if not API_FOOTBALL_KEY:
+        raise HTTPException(400, "API_FOOTBALL_KEY is not configured")
+    return await asyncio.to_thread(backtest.backtest_league, league, season, API_FOOTBALL_KEY)
 
 
 @app.get("/api/settings/digest")
