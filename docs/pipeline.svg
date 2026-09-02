@@ -1,0 +1,82 @@
+<svg width="1100" height="500" viewBox="0 0 1100 500" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+  <defs>
+    <linearGradient id="pbg" x1="0" y1="0" x2="1100" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#020617"/>
+      <stop offset="1" stop-color="#0b1224"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1100" height="500" fill="url(#pbg)"/>
+  <rect x="12" y="12" width="1076" height="476" rx="16" fill="#0e1223" stroke="#334155"/>
+
+  <!-- header -->
+  <rect x="12" y="12" width="1076" height="52" rx="16" fill="#1e293b"/>
+  <rect x="12" y="48" width="1076" height="16" fill="#1e293b"/>
+  <text x="44" y="44" font-size="14" font-weight="700" fill="#22c55e" letter-spacing="0.5">№</text>
+  <text x="106" y="44" font-size="14" font-weight="700" fill="#22c55e" letter-spacing="0.5">ЭТАП</text>
+  <text x="284" y="44" font-size="14" font-weight="700" fill="#22c55e" letter-spacing="0.5">ЧТО ПРОИСХОДИТ</text>
+  <text x="742" y="44" font-size="14" font-weight="700" fill="#22c55e" letter-spacing="0.5">ИТОГ</text>
+
+  <!-- rows: y starts at 64, each row height 58, 7 rows -->
+  <g font-size="15" fill="#f8fafc">
+
+    <!-- row 1 -->
+    <line x1="12" y1="122" x2="1088" y2="122" stroke="#334155" stroke-width="1"/>
+    <circle cx="58" cy="93" r="13" fill="none" stroke="#22c55e" stroke-width="1.6"/>
+    <text x="58" y="98" font-size="13" font-weight="700" fill="#22c55e" text-anchor="middle">1</text>
+    <text x="106" y="98" font-weight="600">Сбор данных</text>
+    <text x="284" y="98" fill="#cbd5e1">форма, травмы, мотивация, H2H, кэфы букмекеров</text>
+    <text x="742" y="98" fill="#94a3b8">контекст для анализа</text>
+
+    <!-- row 2 -->
+    <line x1="12" y1="180" x2="1088" y2="180" stroke="#334155" stroke-width="1"/>
+    <circle cx="58" cy="151" r="13" fill="none" stroke="#22c55e" stroke-width="1.6"/>
+    <text x="58" y="156" font-size="13" font-weight="700" fill="#22c55e" text-anchor="middle">2</text>
+    <text x="106" y="156" font-weight="600">Оценка LLM</text>
+    <text x="284" y="156" fill="#cbd5e1">независимая вероятность по 1X2 и тоталам</text>
+    <text x="742" y="156" fill="#94a3b8">вероятность модели</text>
+
+    <!-- row 3 -->
+    <line x1="12" y1="238" x2="1088" y2="238" stroke="#334155" stroke-width="1"/>
+    <circle cx="58" cy="209" r="13" fill="none" stroke="#38bdf8" stroke-width="1.6"/>
+    <text x="58" y="214" font-size="13" font-weight="700" fill="#38bdf8" text-anchor="middle">3</text>
+    <text x="106" y="214" font-weight="600">Модель Пуассона</text>
+    <text x="284" y="214" fill="#cbd5e1">оценка по голам, без участия LLM</text>
+    <text x="742" y="214" fill="#94a3b8">вторая, независимая оценка</text>
+
+    <!-- row 4 -->
+    <line x1="12" y1="296" x2="1088" y2="296" stroke="#334155" stroke-width="1"/>
+    <circle cx="58" cy="267" r="13" fill="none" stroke="#22c55e" stroke-width="1.6"/>
+    <text x="58" y="272" font-size="13" font-weight="700" fill="#22c55e" text-anchor="middle">4</text>
+    <text x="106" y="272" font-weight="600">Калибровка</text>
+    <text x="284" y="272" fill="#cbd5e1">Platt-scaling по истории закрытых ставок</text>
+    <text x="742" y="272" fill="#94a3b8">скорректированная вероятность</text>
+
+    <!-- row 5 -->
+    <line x1="12" y1="354" x2="1088" y2="354" stroke="#334155" stroke-width="1"/>
+    <circle cx="58" cy="325" r="13" fill="none" stroke="#f59e0b" stroke-width="1.6"/>
+    <text x="58" y="330" font-size="13" font-weight="700" fill="#f59e0b" text-anchor="middle">5</text>
+    <text x="106" y="330" font-weight="600">Де-виг рынка</text>
+    <text x="284" y="330" fill="#cbd5e1">очистка кэфа от маржи (proportional / Shin)</text>
+    <text x="742" y="330" fill="#94a3b8">справедливая цена рынка</text>
+
+    <!-- row 6 -->
+    <line x1="12" y1="412" x2="1088" y2="412" stroke="#334155" stroke-width="1"/>
+    <circle cx="58" cy="383" r="13" fill="none" stroke="#f59e0b" stroke-width="1.6"/>
+    <text x="58" y="388" font-size="13" font-weight="700" fill="#f59e0b" text-anchor="middle">6</text>
+    <text x="106" y="388" font-weight="600">Расчёт edge</text>
+    <text x="284" y="388" fill="#cbd5e1">вероятность − справедливая цена рынка</text>
+    <text x="742" y="388" fill="#94a3b8">edge в процентных пунктах</text>
+
+    <!-- row 7 : decision, highlighted -->
+    <rect x="14" y="412" width="1072" height="58" fill="#052e16" fill-opacity="0.35"/>
+    <rect x="14" y="412" width="4" height="58" fill="#22c55e"/>
+    <circle cx="58" cy="441" r="13" fill="#22c55e"/>
+    <text x="58" y="446" font-size="13" font-weight="700" fill="#052e16" text-anchor="middle">7</text>
+    <text x="106" y="446" font-weight="700" fill="#f8fafc">Порог 5 п.п.</text>
+    <text x="284" y="446" fill="#f8fafc">edge ≥ 5 п.п.? иначе — тихий пропуск</text>
+    <text x="742" y="446" font-weight="600" fill="#22c55e">рекомендация в Telegram / Mini App</text>
+  </g>
+
+  <rect x="12" y="12" width="1076" height="476" rx="16" fill="none" stroke="#334155"/>
+</svg>
