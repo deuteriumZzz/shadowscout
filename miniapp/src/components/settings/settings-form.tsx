@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -96,16 +96,17 @@ function BacktestPanel() {
 
 export function SettingsForm() {
   const { data, isPending, isError, error, refetch } = useDigestSettings();
-  const setDigest = useSetDigestSettings();
-  const [value, setValue] = useState("");
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    if (data) setValue(data.leagues ?? "");
-  }, [data]);
 
   if (isPending) return <LoadingState label="Загружаю настройки…" />;
   if (isError) return <ErrorState message={error.message} onRetry={() => refetch()} />;
+
+  return <DigestSettingsEditor initialValue={data?.leagues ?? ""} />;
+}
+
+function DigestSettingsEditor({ initialValue }: { initialValue: string }) {
+  const setDigest = useSetDigestSettings();
+  const [value, setValue] = useState(initialValue);
+  const [saved, setSaved] = useState(false);
 
   function toggleLeague(league: string) {
     const parts = value.split(",").map((s) => s.trim()).filter(Boolean);
