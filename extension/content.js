@@ -10,6 +10,7 @@
 const SELECTORS_BY_HOST = {
   "1xbet.com": null,
   "fonbet.ru": null,
+  "fon.bet": null,
   "bet365.com": null,
   "winline.ru": null,
 };
@@ -35,8 +36,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   input.focus();
-  input.value = String(msg.stake);
+  // A plain `input.value = x` can show the number while a React form keeps its
+  // old state, so the page would bet a different amount than it displays. The
+  // native setter makes the framework see the change.
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+  setValue.call(input, String(msg.stake));
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
+  if (input.value !== String(msg.stake)) {
+    sendResponse({ ok: false, error: "Сайт не принял сумму — введи её вручную и проверь купон" });
+    return;
+  }
   sendResponse({ ok: true });
 });

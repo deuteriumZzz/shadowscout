@@ -8,7 +8,7 @@
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
-      "matches": ["*://*.1xbet.com/*", "*://*.fonbet.ru/*", "*://*.bet365.com/*", "*://*.winline.ru/*"],
+      "matches": ["*://*.1xbet.com/*", "*://*.fonbet.ru/*", "*://*.fon.bet/*","*://*.bet365.com/*", "*://*.winline.ru/*"],
       "js": ["content.js"]
     }
   ]
