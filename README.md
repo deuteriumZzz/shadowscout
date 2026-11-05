@@ -72,6 +72,15 @@ shadowscout не ставит за вас. Модель не видит цену
 
 Открывается из Telegram кнопкой меню бота:
 
+<p align="center">
+  <img src="docs/screenshots/bets.png" alt="Ставки: матчи и цены Polymarket" width="24%" />
+  <img src="docs/screenshots/forecast.png" alt="Прогноз на экране матча" width="24%" />
+  <img src="docs/screenshots/bank.png" alt="Банк и лимиты" width="24%" />
+  <img src="docs/screenshots/stats.png" alt="Статистика и оценка модели" width="24%" />
+</p>
+
+<p align="center"><sub>Матчи и цены настоящие. Банк, статистика и прогноз на скриншотах из тестовой базы и тестовой модели.</sub></p>
+
 - **Ставки**: матчи и цены Polymarket, поиск, избранное, прогноз по лиге
 - **Live**: идущие матчи и счёт от ESPN
 - **Банк**: кошелёк Polymarket (только чтение по публичному адресу), ставки без денег, лимиты и пауза

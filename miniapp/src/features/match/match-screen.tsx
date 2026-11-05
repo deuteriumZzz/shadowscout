@@ -264,7 +264,7 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
       <div className="pn-detail__body" ref={body}>
         <motion.section ref={board} className="pn-board" style={{ scale: boardScale, opacity: boardOpacity }} aria-label={state === "pre" ? `Начало ${when}` : `Счёт ${homeScore}:${awayScore}`}>
           {[match.home, match.away].map((team, i) => (
-            <div className="pn-board__team" key={team.name} style={{ gridColumn: i ? 3 : 1, gridRow: 1 }}>
+            <div className="pn-board__team" key={team.name} style={{ gridColumn: i ? 3 : 1, gridRow: 1, fontSize: team.name.split(" ").some((word) => word.length > 12) ? 12 : undefined }}>
               {/* eslint-disable-next-line @next/next/no-img-element -- remote logo from the data feed */}
               <img src={team.logo} alt="" width={54} height={54} style={{ objectFit: "contain" }} data-morph-to={i ? "away" : "home"} />
               {team.name}
@@ -272,7 +272,7 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
           ))}
           <div className="pn-board__mid" style={{ gridColumn: 2, gridRow: 1 }}>
             {state === "pre" ? (
-              <span className="pn-small pn-muted" style={{ textAlign: "center", marginTop: 8 }}>{when}</span>
+              <span className="pn-small pn-muted" style={{ textAlign: "center", marginTop: 8, maxWidth: 96 }}>{when}</span>
             ) : (
               <>
                 <span className="pn-board__min">
