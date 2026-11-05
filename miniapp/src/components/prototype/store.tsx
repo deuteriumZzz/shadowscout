@@ -156,6 +156,7 @@ export type Action =
   | { type: "SIM_RESET" }
   | { type: "CONFIRM" }
   | { type: "FLY_MONEY"; amount: number; from: { x: number; y: number }; to: { x: number; y: number } }
+  | { type: "FLY"; kind: Flyer["kind"]; label: string; win?: boolean; from: { x: number; y: number }; to: { x: number; y: number } }
   | { type: "TOAST"; text: string }
   | { type: "TOAST_DONE" }
   | { type: "SET_BUDGET"; budget: number }
@@ -357,6 +358,12 @@ export function reducer(s: GameState, a: Action): GameState {
           tx: a.to.x,
           ty: a.to.y,
         },
+      };
+    case "FLY":
+      return {
+        ...s,
+        nextId: s.nextId + 1,
+        flyer: { id: s.nextId, kind: a.kind, label: a.label, win: a.win, x: a.from.x, y: a.from.y, tx: a.to.x, ty: a.to.y },
       };
     case "SIM_START":
       return { ...s, tab: "live", tabDirection: 1, sim: startSim(a.scenarioId, s.sim.speed) };

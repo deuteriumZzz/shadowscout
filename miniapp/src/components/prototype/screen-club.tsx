@@ -395,10 +395,11 @@ export function StatsScreen() {
                     <motion.div key={h.id} className="pn-hist" layout initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={M.spring.snappy}>
                       {h.result === "win" ? <Check size={20} color="var(--good)" aria-label="Зашла" /> : h.result === "loss" ? <X size={20} color="var(--bad)" aria-label="Не зашла" /> : <Minus size={20} color="var(--tx2)" aria-label="Возврат" />}
                       <div style={{ minWidth: 0 }}>
-                        {h.match.split(" - ").map((team) => (
+                        {h.match.split(" - ").map((team, i) => (
                           <div className="pn-hist__team" key={team}>
                             <Crest team={team} size={18} />
                             <span>{team}</span>
+                            {h.final_score && <b className="pn-num">{h.final_score.split("-")[i]}</b>}
                           </div>
                         ))}
                         <div className="pn-small pn-muted">{pickName(h.match, h.market, h.pick, h.line)} · кэф {h.odds?.toFixed(2)}</div>

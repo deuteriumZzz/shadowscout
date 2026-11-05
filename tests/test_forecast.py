@@ -235,6 +235,21 @@ class ScoreTests(unittest.TestCase):
             self.add({"home": 0.7, "draw": 0.2, "away": 0.1}, None, 2 if i % 2 else 0, 0)
         self.assertIsNotNone(calibration.fit_from_storage())
 
+    def test_a_no_money_bet_settles_itself_from_the_real_score(self):
+        storage.init_bankroll(1000)
+        past = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+        virtual = storage.save_pick("EPL", "A - B", "h2h", "home", 2.5, "low", "", past)
+        storage.place(virtual, 20, virtual=True)
+        real = storage.save_pick("EPL", "C - D", "h2h", "home", 2.5, "low", "", past)
+        storage.place(real, 20)
+        score = {"home": "A", "away": "B", "home_goals": 2, "away_goals": 1}
+        with patch.object(espn_data, "final_score", return_value=score):
+            self.assertEqual(analysis.settle_virtual_picks(), 1)
+        settled = storage.get_pick(virtual)
+        self.assertEqual((settled["result"], settled["final_score"]), ("win", "2-1"))
+        self.assertAlmostEqual(storage.get_bankroll()["capital"], 1030)
+        self.assertIsNone(storage.get_pick(real)["result"], "a real bet still needs confirming")
+
     def test_only_finished_old_forecasts_await_a_result(self):
         past = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
         soon = (datetime.now(timezone.utc) + timedelta(hours=5)).isoformat()

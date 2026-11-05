@@ -2,7 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ExternalLink, Sparkles, Wand2, X } from "lucide-react";
-import { useState } from "react";
+import { useMutationState } from "@tanstack/react-query";
+import { useEffect, useState, type MouseEvent } from "react";
 import { Ball, LeagueLogo, M } from "./fx";
 import { useGame } from "./store";
 import { useAcceptPick, useBankroll, useForecasts, useLimits, useMakeForecast, useSkipPick } from "@/hooks/use-shadowscout";
@@ -36,6 +37,28 @@ export function pickName(match: string, market: string, pick: string, line?: num
 
 const MARKET_TITLE: Record<string, string> = { h2h: "Исход матча", totals: "Тотал голов" };
 
+const reveal = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
+const revealItem = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: M.spring.snappy },
+};
+
+/** Two thin bars under an outcome: what the model says against the market. The numbers sit beside them. */
+function OutcomeBars({ model, market }: { model?: number; market?: number }) {
+  return (
+    <span className="pn-obars" aria-hidden="true">
+      {[{ v: model, color: "var(--accent)" }, { v: market, color: "var(--away)" }].map(({ v, color }) =>
+        v === undefined ? null : (
+          <motion.i key={color} style={{ width: `${v * 100}%`, background: color }} initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ ...M.spring.gentle, delay: 0.15 }} />
+        ),
+      )}
+    </span>
+  );
+}
+
 function MarketRows({ forecast, marketKey, market }: { forecast: Forecast; marketKey: string; market: ForecastMarket }) {
   const outcomes = Object.keys(market.estimate ?? market.fair ?? {});
   return (
@@ -44,12 +67,19 @@ function MarketRows({ forecast, marketKey, market }: { forecast: Forecast; marke
       {outcomes.length > 0 && (
         <table className="pn-table">
           <thead>
-            <tr><th>Исход</th><th>Модель</th><th>Рынок</th></tr>
+            <tr>
+              <th>Исход</th>
+              <th style={{ whiteSpace: "nowrap" }}><i className="pn-swatch" style={{ background: "var(--accent)" }} aria-hidden="true" />Модель</th>
+              <th style={{ whiteSpace: "nowrap" }}><i className="pn-swatch" style={{ background: "var(--away)" }} aria-hidden="true" />Рынок</th>
+            </tr>
           </thead>
           <tbody>
             {outcomes.map((o) => (
               <tr key={o}>
-                <td style={o === market.pick ? { color: "var(--accent)", fontWeight: 600 } : undefined}>{pickName(forecast.match, marketKey, o, market.line)}</td>
+                <td style={o === market.pick ? { color: "var(--accent)", fontWeight: 600 } : undefined}>
+                  {pickName(forecast.match, marketKey, o, market.line)}
+                  <OutcomeBars model={market.estimate?.[o]} market={market.fair?.[o]} />
+                </td>
                 <td className="pn-num">{percent(market.estimate?.[o])}</td>
                 <td className="pn-num">{percent(market.fair?.[o])}</td>
               </tr>
@@ -84,11 +114,30 @@ function Facts({ forecast }: { forecast: Forecast }) {
 }
 
 function PickActions({ pick, url }: { pick: Pick; url: string | null }) {
-  const { dispatch } = useGame();
+  const { state: { calm }, dispatch } = useGame();
   const accept = useAcceptPick();
   const skip = useSkipPick();
   const bank = useBankroll();
   const limits = useLimits();
+  function onAccept(e: MouseEvent<HTMLButtonElement>) {
+    const from = e.currentTarget.getBoundingClientRect();
+    accept.mutate(pick.id, {
+      onSuccess: () => {
+        haptic("medium");
+        dispatch({ type: "TOAST", text: "Принято, без денег" });
+        // The price flies to the Live tab, where the bet now lives. Inside a match that tab is covered, so the row's own change says it.
+        const to = document.querySelector('[data-dock="live"]')?.getBoundingClientRect();
+        if (!to || calm || document.querySelector(".pn-detail") || !pick.odds) return;
+        dispatch({
+          type: "FLY",
+          kind: "odds",
+          label: pick.odds.toFixed(2),
+          from: { x: from.left + from.width / 2, y: from.top + from.height / 2 },
+          to: { x: to.left + to.width / 2, y: to.top + to.height / 2 },
+        });
+      },
+    });
+  }
   const blocked = bank.data?.stopped
     ? "Ставки приостановлены: сработала защита банка"
     : limits.data?.reason ?? (bank.data === null ? "Сначала задайте банк" : null);
@@ -105,7 +154,7 @@ function PickActions({ pick, url }: { pick: Pick; url: string | null }) {
         <motion.button className="pn-btn pn-btn--ghost" whileTap={{ scale: M.press }} disabled={skip.isPending} onClick={() => skip.mutate(pick.id)}>
           <X size={16} aria-hidden="true" /> Пропустить
         </motion.button>
-        <motion.button className="pn-btn pn-btn--primary" whileTap={{ scale: M.press }} disabled={!!blocked || accept.isPending} onClick={() => accept.mutate(pick.id, { onSuccess: () => dispatch({ type: "TOAST", text: "Принято, без денег" }) })}>
+        <motion.button className="pn-btn pn-btn--primary" whileTap={{ scale: M.press }} disabled={!!blocked || accept.isPending} onClick={onAccept}>
           <Check size={16} aria-hidden="true" /> Принять
         </motion.button>
       </div>
@@ -116,11 +165,51 @@ function PickActions({ pick, url }: { pick: Pick; url: string | null }) {
 
 function ForecastBody({ forecast, showLink = false }: { forecast: Forecast; showLink?: boolean }) {
   return (
-    <div className="pn-stack" style={{ gap: 14 }}>
-      {forecast.picks.filter((p) => p.status === "pending").map((p) => <PickActions key={p.id} pick={p} url={showLink ? forecast.url : null} />)}
-      {forecast.picks.filter((p) => p.status === "placed").map((p) => <p className="pn-small" key={p.id} style={{ color: "var(--good)" }}>Принято: {pickName(p.match, p.market, p.pick, p.line)}, кэф {p.odds?.toFixed(2)}</p>)}
-      {Object.entries(forecast.markets).map(([key, market]) => <MarketRows key={key} forecast={forecast} marketKey={key} market={market} />)}
-      <Facts forecast={forecast} />
+    <motion.div className="pn-stack" style={{ gap: 14 }} variants={reveal} initial="hidden" animate="show">
+      <AnimatePresence mode="popLayout" initial={false}>
+        {forecast.picks.filter((p) => p.status === "pending").map((p) => (
+          <motion.div key={`pending${p.id}`} variants={revealItem} exit={{ opacity: 0, scale: 0.96 }} transition={M.spring.snappy}>
+            <PickActions pick={p} url={showLink ? forecast.url : null} />
+          </motion.div>
+        ))}
+        {forecast.picks.filter((p) => p.status === "placed").map((p) => (
+          <motion.p className="pn-small" key={`placed${p.id}`} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--good)" }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={M.spring.snappy}>
+            <motion.span style={{ display: "grid" }} initial={{ scale: 0.3 }} animate={{ scale: 1 }} transition={M.spring.bouncy}><Check size={16} aria-hidden="true" /></motion.span>
+            Принято: {pickName(p.match, p.market, p.pick, p.line)}, кэф {p.odds?.toFixed(2)}
+          </motion.p>
+        ))}
+      </AnimatePresence>
+      {Object.entries(forecast.markets).map(([key, market]) => (
+        <motion.div key={key} variants={revealItem}><MarketRows forecast={forecast} marketKey={key} market={market} /></motion.div>
+      ))}
+      <motion.div variants={revealItem}><Facts forecast={forecast} /></motion.div>
+    </motion.div>
+  );
+}
+
+const WAIT_STEPS = ["Смотрит форму команд", "Проверяет травмы и составы", "Читает новости и слухи", "Смотрит календарь и усталость", "Сводит всё в оценку"];
+const WAIT_STEP_MS = 9000;
+
+/** What the model is asked to check, in order. A description of the job, not a progress bar: nothing here reports real progress. */
+function ForecastWaiting() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setStep((s) => Math.min(s + 1, WAIT_STEPS.length - 1)), WAIT_STEP_MS);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="pn-stack" style={{ alignItems: "center", gap: 10, padding: "10px 0" }} role="status">
+      <motion.div animate={{ y: [0, 16, 0], rotate: [0, 120, 240] }} transition={{ duration: M.dur.slow, repeat: Infinity, ease: "easeInOut" }} style={{ display: "grid" }}>
+        <Ball size={26} />
+      </motion.div>
+      <div style={{ minHeight: 22 }}>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.b key={step} style={{ display: "block", fontWeight: 600 }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: M.dur.fast }}>
+            Модель: {WAIT_STEPS[step].toLowerCase()}
+          </motion.b>
+        </AnimatePresence>
+      </div>
+      <p className="pn-small pn-muted" style={{ textAlign: "center" }}>Обычно это занимает пару минут. Экран можно закрыть: прогноз сохранится.</p>
     </div>
   );
 }
@@ -131,16 +220,18 @@ export function ForecastSection({ home, away, league }: { home: string; away: st
   const make = useMakeForecast();
   const match = `${home} - ${away}`;
   const forecast = forecasts?.find((f) => f.match === match) ?? (make.data?.match === match ? make.data : undefined);
+  // Also when the screen was closed and reopened while the model is still working.
+  const running = useMutationState({
+    filters: { mutationKey: ["forecast"], status: "pending" },
+    select: (m) => m.state.variables as { home: string; away: string } | undefined,
+  }).some((v) => v?.home === home && v?.away === away);
   return (
     <section className="pn-panel pn-panel--flat">
       <h2 className="pn-h2" style={{ display: "flex", alignItems: "center", gap: 8 }}><Sparkles size={17} color="var(--gold)" aria-hidden="true" /> Прогноз</h2>
       {forecast ? (
         <ForecastBody forecast={forecast} />
-      ) : make.isPending ? (
-        <div className="pn-stack" style={{ alignItems: "center", gap: 10 }} role="status">
-          <Ball size={24} />
-          <p className="pn-small pn-muted" style={{ textAlign: "center" }}>Модель изучает матч, это занимает пару минут.</p>
-        </div>
+      ) : running ? (
+        <ForecastWaiting />
       ) : (
         <>
           <p className="pn-small pn-muted">Модель оценит шансы, не видя цены. Решение о ставке примет код.</p>

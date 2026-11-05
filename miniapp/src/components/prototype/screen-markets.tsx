@@ -46,8 +46,40 @@ function TeamLogo({ src, alt }: { src: string; alt: string }) {
 }
 
 function OddsTile({ option }: { option: LiveOption }) {
+  // Only a change seen while watching flashes: the first load is not news.
+  const shown = option.odds.toFixed(2);
+  const [prev, setPrev] = useState(shown);
+  const [move, setMove] = useState<{ up: boolean; n: number } | null>(null);
+  if (shown !== prev) {
+    setPrev(shown);
+    setMove({ up: Number(shown) > Number(prev), n: (move?.n ?? 0) + 1 });
+  }
   return (
-    <div className="pn-tile pn-tile--static" title={option.title} aria-label={`${option.title}, кэф ${option.odds.toFixed(2)}`} role="group">
+    <div className="pn-tile pn-tile--static" title={option.title} aria-label={`${option.title}, кэф ${shown}`} role="group">
+      {move && (
+        <motion.i
+          key={move.n}
+          className="pn-tile__flash"
+          style={{ background: move.up ? "var(--good)" : "var(--bad)" }}
+          initial={{ opacity: 0.4 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: M.dur.crawl, ease: M.ease.smooth }}
+          aria-hidden="true"
+        />
+      )}
+      {move && (
+        <motion.span
+          key={`a${move.n}`}
+          className="pn-tile__move"
+          style={{ color: move.up ? "var(--good)" : "var(--bad)" }}
+          initial={{ opacity: 1, y: move.up ? 4 : -4 }}
+          animate={{ opacity: 0, y: 0 }}
+          transition={{ duration: M.dur.crawl * 2, ease: M.ease.smooth }}
+          aria-hidden="true"
+        >
+          {move.up ? "▲" : "▼"}
+        </motion.span>
+      )}
       <span className="pn-tile__label">{option.id.toUpperCase()}</span>
       <span className="pn-tile__odds">
         <AnimatePresence mode="popLayout" initial={false}>

@@ -32,6 +32,7 @@ export interface Pick {
   blended_probability: number | null;
   provider: string | null;
   virtual: 0 | 1;
+  final_score: string | null;
 }
 
 export interface ForecastMarket {

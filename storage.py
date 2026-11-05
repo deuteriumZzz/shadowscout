@@ -113,6 +113,7 @@ def _migrate(conn):
         ("provider", "TEXT"),
         ("prompt_version", "TEXT"),
         ("virtual", "INTEGER NOT NULL DEFAULT 0"),
+        ("final_score", "TEXT"),
     ):
         if column not in existing:
             conn.execute(f"ALTER TABLE picks ADD COLUMN {column} {decl}")
@@ -478,6 +479,11 @@ def place(pick_id: int, stake: float | None, virtual: bool = False):
     with closing(_connect()) as conn, conn:
         conn.execute("UPDATE picks SET status = 'placed', stake = ?, virtual = ? WHERE id = ?",
                      (stake, int(virtual), pick_id))
+
+
+def set_final_score(pick_id: int, score: str):
+    with closing(_connect()) as conn, conn:
+        conn.execute("UPDATE picks SET final_score = ? WHERE id = ?", (score, pick_id))
 
 
 def list_open_picks(limit: int = 50) -> list[sqlite3.Row]:

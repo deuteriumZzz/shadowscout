@@ -12,6 +12,7 @@ import { BankScreen, SettingsScreen, StatsScreen } from "./screen-club";
 import { LiveScreen } from "./screen-live";
 import { GoalAlerts } from "./screen-markets";
 import { BetsScreen, Sheets, SlipBar } from "./screen-matchday";
+import { SettledMoments } from "./screen-moments";
 import { WeekStories } from "./screen-stories";
 import { GameProvider, TABS, useGame, type Tab, type ThemeChoice } from "./store";
 import { useBankroll, useOpenPicks, useWallet } from "@/hooks/use-shadowscout";
@@ -280,7 +281,6 @@ function Toasts() {
   );
 }
 
-const COIN_SPREAD = [-46, 30, -14, 52, -30, 12];
 const PULL_REFRESH = 70;
 const PULL_MAX = 110;
 const SWIPE_MIN = 70;
@@ -405,18 +405,6 @@ function Flyer() {
           {flyer.label}
         </motion.div>
       )}
-      {/* A trail of coins on a win only: a loss just moves the number. */}
-      {flyer?.win &&
-        COIN_SPREAD.map((spread, i) => (
-          <motion.i
-            key={`${flyer.id}c${i}`}
-            className="pn-coin"
-            initial={{ x: flyer.x + spread, y: flyer.y, scale: 1 }}
-            animate={{ x: flyer.tx, y: flyer.ty, scale: 0.5 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: M.dur.slow, ease: M.ease.smooth, delay: 0.04 + i * 0.05 }}
-          />
-        ))}
     </AnimatePresence>
   );
 }
@@ -527,6 +515,7 @@ function Shell() {
           <MomentLayer />
           <Toasts />
           <GoalAlerts />
+          <SettledMoments />
           <Sheets />
           <StopOverlay />
           <AnimatePresence>{state.stories && <WeekStories key="stories" />}</AnimatePresence>

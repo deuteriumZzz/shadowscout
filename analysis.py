@@ -391,6 +391,7 @@ def settle_virtual_picks() -> int:
         except (requests.RequestException, ValueError):
             continue
         if info["finished"] and info["pick_result"] in ("win", "loss", "push"):
+            storage.set_final_score(pick["id"], info["final_score"])
             storage.settle(pick["id"], info["pick_result"])
             done += 1
     return done

@@ -403,6 +403,14 @@
 .pn-story__duel { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; }
 .pn-story__zone { position: absolute; top: 60px; bottom: 0; z-index: 1; width: 40%; }
 
+/* --- Real forecast and price moves --- */
+.pn-table td:first-child .pn-obars { display: grid; grid-template-columns: 1fr; gap: 2px; width: 100%; max-width: 170px; margin-top: 5px; }
+.pn-obars i { display: block; height: 4px; border-radius: 4px; transform-origin: left; }
+.pn-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; }
+.pn-tile { overflow: hidden; }
+.pn-tile__flash { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+.pn-tile__move { position: absolute; top: 3px; right: 5px; font-size: 9px; line-height: 1; pointer-events: none; }
+
 /* --- Real match centre --- */
 .pn-detail { position: absolute; inset: 0; z-index: 22; display: flex; flex-direction: column; background: var(--bg); }
 .pn-detail__head { display: flex; align-items: center; padding: max(env(safe-area-inset-top), 8px) 8px 4px var(--gutter); }

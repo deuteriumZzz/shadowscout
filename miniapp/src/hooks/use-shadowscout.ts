@@ -31,6 +31,7 @@ export function useHistory(limit = 100) {
   return useQuery({
     queryKey: ["history", limit],
     queryFn: () => api.get<Pick[]>(`/api/history?limit=${limit}`),
+    refetchInterval: LIVE_POLL_MS,
   });
 }
 
@@ -137,8 +138,12 @@ export function useAcceptPick() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (pickId: number) => api.post<Pick>(`/api/picks/${pickId}/accept`),
-    onSuccess: (_data, pickId) => {
+    onSuccess: (data, pickId) => {
       removeFromPending(qc, pickId);
+      // At once, so the buttons turn into "accepted" with the tap rather than after a refetch.
+      qc.setQueryData<Forecast[]>(["forecasts"], (old) =>
+        old?.map((f) => ({ ...f, picks: f.picks.map((p) => (p.id === pickId ? data : p)) })),
+      );
       qc.invalidateQueries({ queryKey: ["forecasts"] });
       qc.invalidateQueries({ queryKey: ["picks", "open"] });
     },
@@ -157,6 +162,7 @@ export function useForecasts() {
 export function useMakeForecast() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: ["forecast"],
     mutationFn: (body: { home: string; away: string; league: string }) => api.post<Forecast>("/api/forecast", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["forecasts"] });
