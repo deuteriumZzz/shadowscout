@@ -1,0 +1,12 @@
+[project]
+name = "shadowscout"
+version = "0.1.0"
+description = "Football forecasts against the market, in a Telegram bot and Mini App"
+requires-python = ">=3.9"
+
+[tool.setuptools]
+packages = ["shadowscout", "shadowscout.api", "shadowscout.feeds", "shadowscout.forecast"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

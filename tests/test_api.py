@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-bot-token")
 os.environ.setdefault("OWNER_TELEGRAM_ID", "12345")
 
-import storage
-import webapp_api.main as api_main
+from shadowscout import storage
+import shadowscout.api.main as api_main
 
 
 class PicksApiTests(unittest.TestCase):

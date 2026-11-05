@@ -45,3 +45,10 @@ export function haptic(style: "light" | "medium" | "heavy" = "light") {
 export function hapticResult(type: "success" | "error" | "warning") {
   getWebApp()?.HapticFeedback.notificationOccurred(type);
 }
+
+export function openLink(url: string) {
+  haptic("light");
+  const tg = getWebApp() as unknown as { initData?: string; openLink?: (u: string) => void } | undefined;
+  if (tg?.initData && tg.openLink) tg.openLink(url);
+  else window.open(url, "_blank", "noopener");
+}

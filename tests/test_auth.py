@@ -11,7 +11,7 @@ os.environ.setdefault("OWNER_TELEGRAM_ID", "12345")
 
 from fastapi import HTTPException
 
-from webapp_api.auth import verify_init_data
+from shadowscout.api.auth import verify_init_data
 
 
 BOT_TOKEN = "test-bot-token"

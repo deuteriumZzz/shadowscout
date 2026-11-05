@@ -8,48 +8,52 @@ web
 
 ## Stack
 
-delegated: Next.js (App Router, client-heavy) for the frontend + a separate FastAPI service wrapping the existing `storage.py` for the backend. Chosen because storage.py's functions are synchronous and drop straight into FastAPI's threadpool with no rewrite, shadcn/ui needs a React framework, and the bot's own `python-telegram-bot` polling loop stays untouched by running as its own process.
+delegated: Next.js (App Router, client-heavy) for the frontend + a separate FastAPI service (`shadowscout/api/`) over `shadowscout/storage.py`. Chosen because storage's functions are synchronous and drop straight into FastAPI's threadpool, and the bot's own `python-telegram-bot` polling loop stays untouched by running as its own process.
 
 ## Users
 
-A single user: the owner/operator of the shadowscout Telegram bot, opening the Mini App from inside Telegram (via the bot's menu button) to review and act on the bot's own betting recommendations. Not a multi-tenant product — no signup, no other accounts.
+A single user: the owner/operator of the shadowscout Telegram bot, opening the Mini App from inside Telegram (via the bot's menu button). Not a multi-tenant product: no signup, no other accounts.
 
 ## Product Purpose
 
-shadowscout analyzes upcoming football matches (form, injuries, coach, motivation, odds) and produces betting recommendations with a computed edge against the market. The bot already delivers these as Telegram messages with inline "Ставлю ✅ / Пропускаю ❌" buttons; the Mini App is a richer, persistent surface for the same underlying data — a dashboard to review the current recommendation feed, bankroll health, performance stats, and settled-bet history, and to take the same place/skip actions, without hunting through chat history.
+shadowscout estimates upcoming football matches and compares the estimate with the market. The Mini App is the main surface: real matches and Polymarket prices, the match screen, forecasts, a read-only wallet, bets without money, bank limits, and the statistics that show whether the model is any good.
 
 ## Positioning
 
-Not a betting product and never places bets itself — it only recommends, and every action (marking "placed") is the user manually confirming what they already did at their own bookmaker. The differentiator versus a plain chat feed is persistent, structured state: bankroll status with its two independent stop conditions (drawdown, rolling CLV), and calibration/CLV metrics that measure whether the model's own probability estimates are honest — not just win/loss.
+Never places bets by itself. The model estimates probabilities and code decides, so it can't simply agree with a bet. The differentiator versus a plain tipster is measurement: every forecast is stored and scored against the market and the result, and calibration/CLV show whether the estimates are honest, not just win/loss.
 
 ## Operating Context
 
-Launched from inside Telegram (bot menu button / WebAppInfo), running in Telegram's in-app WebView on mobile or desktop Telegram. Auth is Telegram's own `initData` (HMAC-verified against the bot token), gated additionally to a single allowed Telegram user id — there is no separate login. The backend reads/writes the same SQLite file (`storage.py`'s `shadowscout.db`) that the bot's own background jobs (CLV capture, steam check, settlement, result tracking, digest) already read and write, so data can change under the Mini App at any time independent of user action — the UI polls rather than assuming it owns the only writer.
+Launched from inside Telegram (bot menu button / WebAppInfo), in Telegram's in-app WebView on mobile or desktop. Auth is Telegram's own `initData` (HMAC-verified against the bot token), gated additionally to a single allowed Telegram user id. The API reads/writes the same SQLite file the bot's background jobs use, so data can change at any time independent of the user: the UI polls rather than assuming it owns the only writer.
 
 ## Capabilities and Constraints
 
-- Data model is fixed by the existing `storage.py` schema: picks (league, match, market, pick, odds, confidence, reasoning, status pending/placed/skipped, result win/loss/push, stake, commence_time, closing_odds, model_probability, poisson_probability, price_verified, recommended_stake), a single-row bankroll (capital, peak, unit_pct, stop_loss_pct), and a settings key/value table.
-- The Mini App can trigger the same actions as the bot's inline buttons: mark a pick placed (with stake) or skipped, and — best-effort, same as `bot.py`'s `button_cb` — open the configured bookmaker site in a local browser via `browser_session.py` when marking placed (only meaningful when the API runs on the same desktop as the browser; failures there are non-fatal, matching the bot's own try/except behavior).
-- Settling a result (win/loss/push) requiring bankroll adjustment stays a deliberate confirm action, mirroring the bot's `/settle` and settlement-job confirm button — never auto-applied from the Mini App.
-- No new business logic: the Mini App is a read/act surface over existing `analysis.py`/`storage.py` behavior, not a reimplementation of edge calculation, calibration, or staking rules.
-- Undecided: production hosting/domain for the FastAPI backend and the Next.js frontend (deployment specifics deferred to when the user is ready to publish the WebApp URL to BotFather).
+- Data lives in `storage.py`'s SQLite schema: picks, forecasts and their scores, bankroll, limits, settings.
+- Match data comes from ESPN, prices from Polymarket, both without keys. LLM and optional football API keys are pasted in the app and stored encrypted (`connections.py`).
+- The forecast logic lives in `shadowscout/forecast/`. The frontend shows its results and never reimplements edge calculation, calibration or staking.
+- The wallet is read-only from a public address. A seed phrase or private key is never asked for or accepted.
+- No bookmaker passwords stored, no browser auto-clicks, no antidetect or captcha bypass. No personal data sent to the LLM.
+- Real bets only after the model proves itself, with limits and confirmation.
+- Settling a real result that adjusts the bank stays a deliberate confirm.
+- Undecided: production hosting/domain for the API and the frontend.
 
 ## Brand Commitments
 
-None. "shadowscout" has no existing logo or visual identity — the name is rendered as a text wordmark plus an icon (ball/scanner motif), not a designed mark to preserve.
+None. "shadowscout" has no existing logo or visual identity: the name is a text wordmark.
 
 ## Evidence on Hand
 
-The database currently has little to no settled history (bankroll likely unset, fewer than the 30 settled picks `storage.py` considers a reliable sample). Every list/stat view must have a real, considered empty state — not a placeholder assuming data exists — since that empty state is what the owner will actually see on first use.
+The database starts with little or no settled history. Every list and stat view must have a real, considered empty state, since that's what the owner will see on first use. The forecast thresholds are hand-picked and not yet measured; the verdict on the model comes after 300 scored forecasts.
 
 ## Product Principles
 
-1. Operate mode, not Persuade: this is a task/data surface for one operator, not a pitch — scanability and correct state representation outrank expressive marketing moves.
-2. Never imply an action the bot itself wouldn't take: the Mini App must respect the same stop conditions (drawdown stop, CLV gate) and never suggest a stake or auto-settle a result the backend logic wouldn't also produce.
-3. Assume concurrent writers: background jobs mutate picks/bankroll independent of the Mini App session, so views poll and reconcile rather than trusting client-cached state as ground truth.
-4. Every number is either real (from storage.py) or explicitly a "no data yet" state — never a placeholder/fake figure, since this is financial data the owner will act on.
-5. Security is not cosmetic: the API is exposed on the public internet for Telegram to load it, so initData verification and the single-owner allowlist are load-bearing, not best-effort.
+1. Operate mode, not Persuade: scanability and correct state outrank expressive marketing moves.
+2. Never imply an action the backend wouldn't take: respect the same stop conditions, never suggest a stake or settle a result on the client.
+3. Assume concurrent writers: views poll and reconcile rather than trusting client-cached state.
+4. Every number is real or explicitly "нет данных". Never a placeholder, a demo figure or a 0 standing in for a failure, since the owner will act on it.
+5. Security is not cosmetic: the API is on the public internet for Telegram to load it, so initData verification and the single-owner allowlist are load-bearing.
+6. No reward for betting: no celebration for placing a bet, no nudge to bet more or chase a loss.
 
 ## Accessibility & Inclusion
 
-Primary usage is one-handed on a phone inside Telegram's WebView: touch targets ≥44px, safe-area insets respected (Telegram's viewport can be inset by its own chrome), and the color system must carry win/loss/edge meaning through more than color alone (icons/text alongside the green/red) for colorblind legibility.
+Primary usage is one-handed on a phone inside Telegram's WebView: touch targets ≥44px, safe-area insets respected, and win/loss/edge meaning carried through more than color alone (icons/text alongside green/red).

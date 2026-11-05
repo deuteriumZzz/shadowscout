@@ -10,9 +10,9 @@ os.environ.setdefault("OWNER_TELEGRAM_ID", "12345")
 
 import requests
 
-import storage
-import wallet
-import webapp_api.main as api_main
+from shadowscout import storage
+from shadowscout import wallet
+import shadowscout.api.main as api_main
 
 LOGIN = "0x" + "a" * 40
 PROXY = "0x" + "b" * 40

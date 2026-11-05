@@ -7,9 +7,9 @@ from unittest.mock import patch
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-bot-token")
 os.environ.setdefault("OWNER_TELEGRAM_ID", "12345")
 
-import espn_data
-import match_alerts
-import storage
+from shadowscout.feeds import espn_data
+from shadowscout import match_alerts
+from shadowscout import storage
 
 PICK = {"match": "Arsenal - Everton", "market": "h2h", "pick": "home", "line": None}
 

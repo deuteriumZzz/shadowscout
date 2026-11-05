@@ -10,7 +10,6 @@ import type {
   ForecastScores,
   Limits,
   Pick,
-  PlacePickResponse,
   Stats,
   WalletStatus,
 } from "@/lib/types";
@@ -19,14 +18,6 @@ import type {
 // session — see PRODUCT.md's Operating Context — so these two poll rather
 // than trusting a one-time fetch as ground truth.
 const LIVE_POLL_MS = 45_000;
-
-export function usePendingPicks() {
-  return useQuery({
-    queryKey: ["picks", "pending"],
-    queryFn: () => api.get<Pick[]>("/api/picks/pending"),
-    refetchInterval: LIVE_POLL_MS,
-  });
-}
 
 export function useHistory(limit = 100) {
   return useQuery({
@@ -204,16 +195,5 @@ export function useSetLimits() {
   return useMutation({
     mutationFn: (body: { daily_limit?: number; pause?: boolean }) => api.post<Limits>("/api/limits", body),
     onSuccess: (data) => qc.setQueryData(["limits"], data),
-  });
-}
-
-export function usePlacePick() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (pickId: number) => api.post<PlacePickResponse>(`/api/picks/${pickId}/place`),
-    onSuccess: (_data, pickId) => {
-      removeFromPending(qc, pickId);
-      qc.invalidateQueries({ queryKey: ["bankroll"] });
-    },
   });
 }

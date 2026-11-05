@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-bot-token")
 os.environ.setdefault("OWNER_TELEGRAM_ID", "12345")
 
-import connections
-import llm_providers
-import storage
-import webapp_api.main as api_main
+from shadowscout import connections
+from shadowscout.forecast import llm_providers
+from shadowscout import storage
+import shadowscout.api.main as api_main
 
 KEY = "sk-very-secret-value-a1b2"
 
@@ -118,22 +118,22 @@ class ConnectionsTests(unittest.TestCase):
         self.assertTrue(llm_providers._is_rate_limited(caught.exception))
 
     def test_probe_results_are_readable_and_never_echo_the_key(self):
-        with patch("connections.requests.get", return_value=MagicMock(ok=False, status_code=401)):
+        with patch("shadowscout.connections.requests.get", return_value=MagicMock(ok=False, status_code=401)):
             self.assertEqual(connections.test("odds_api", KEY)["detail"], "Ключ не подошёл")
-        with patch("connections.requests.get", return_value=MagicMock(ok=False, status_code=429)):
+        with patch("shadowscout.connections.requests.get", return_value=MagicMock(ok=False, status_code=429)):
             self.assertIn("Лимит", connections.test("odds_api", KEY)["detail"])
         boom = connections.requests.ConnectionError(f"https://x?apiKey={KEY}")
-        with patch("connections.requests.get", side_effect=boom):
+        with patch("shadowscout.connections.requests.get", side_effect=boom):
             self.assertNotIn(KEY, connections.test("odds_api", KEY)["detail"])
 
     def test_api_football_bad_key_is_caught_despite_http_200(self):
         reply = MagicMock(ok=True, status_code=200)
         reply.json.return_value = {"errors": {"token": "invalid"}}
-        with patch("connections.requests.get", return_value=reply):
+        with patch("shadowscout.connections.requests.get", return_value=reply):
             self.assertFalse(connections.test("api_football", KEY)["ok"])
 
     def test_keyless_source_needs_no_key_and_refuses_one(self):
-        with patch("connections.requests.get", return_value=MagicMock(ok=True, status_code=200)):
+        with patch("shadowscout.connections.requests.get", return_value=MagicMock(ok=True, status_code=200)):
             self.assertTrue(connections.test("espn")["ok"])
         self.assertEqual(self.client.post("/api/connections/espn", json={"key": KEY}).status_code, 400)
 

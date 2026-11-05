@@ -9,7 +9,7 @@
 
 1. `chrome://extensions` → включить «Режим разработчика» → «Загрузить
    распакованное расширение» → выбрать эту папку (`extension/`).
-2. Открой попап расширения, укажи публичный адрес твоего `webapp_api` и
+2. Открой попап расширения, укажи публичный адрес твоего API (`shadowscout.api`) и
    `EXTENSION_API_TOKEN` из `.env` (сгенерировать:
    `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`).
 

@@ -5,7 +5,7 @@ python-dotenv>=1.0
 selenium>=4.25
 webdriver-manager>=4.0
 
-# Mini App backend (webapp_api/) — separate process from bot.py
+# Mini App backend (shadowscout/api/), a separate process from the bot
 cryptography>=42  # encrypts API keys saved from the Mini App, see connections.py
 fastapi>=0.115
 uvicorn[standard]>=0.32

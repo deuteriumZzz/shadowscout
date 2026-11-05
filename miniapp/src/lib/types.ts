@@ -1,4 +1,4 @@
-// Mirrors webapp_api/main.py's JSON shapes, which in turn mirror
+// Mirrors shadowscout/api/main.py's JSON shapes, which in turn mirror
 // storage.py's `picks` / `bankroll` schema. Keep these two in sync by hand
 // — there is no shared schema generator between the Python and TS sides.
 
@@ -126,10 +126,6 @@ export interface Limits {
   reason: string | null;
 }
 
-export interface PlacePickResponse extends Pick {
-  browser_opened: boolean;
-}
-
 export interface BankrollStatus {
   capital: number;
   peak: number;
@@ -181,14 +177,3 @@ export interface BacktestResult {
   hit_rate: number | null;
   league_id: number | null;
 }
-
-export const MARKET_LABEL: Record<Market, string> = {
-  h2h: "1X2",
-  totals: "Тоталы",
-};
-
-export const CONFIDENCE_LABEL: Record<Confidence, string> = {
-  low: "Низкая",
-  medium: "Средняя",
-  high: "Высокая",
-};

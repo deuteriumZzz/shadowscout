@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import Script from "next/script";
-import { Providers } from "@/components/providers";
+import { Providers } from "./providers";
 import "./globals.css";
 
 const inter = Inter({
@@ -9,14 +9,9 @@ const inter = Inter({
   subsets: ["latin", "cyrillic"],
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
   title: "shadowscout",
-  description: "Дашборд рекомендаций shadowscout",
+  description: "Футбольные прогнозы и матчи в Telegram",
   robots: { index: false, follow: false },
 };
 
@@ -32,10 +27,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ru"
-      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={inter.variable}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground overscroll-none">
+      <body>
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
         <Providers>{children}</Providers>
       </body>

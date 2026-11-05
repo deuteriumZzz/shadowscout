@@ -7,14 +7,14 @@ from unittest.mock import patch
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-bot-token")
 os.environ.setdefault("OWNER_TELEGRAM_ID", "12345")
 
-import analysis
-import bookmakers
-import calibration
-import espn_data
-import news_feed
-import polymarket
-import storage
-import xg_model
+from shadowscout.forecast import analysis
+from shadowscout.feeds import bookmakers
+from shadowscout.forecast import calibration
+from shadowscout.feeds import espn_data
+from shadowscout.feeds import news_feed
+from shadowscout.feeds import polymarket
+from shadowscout import storage
+from shadowscout.forecast import xg_model
 
 NOW = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
 FUTURE = "2026-11-07T15:00:00Z"
