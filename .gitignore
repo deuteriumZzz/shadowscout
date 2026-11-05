@@ -4,3 +4,6 @@ __pycache__/
 .env
 shadowscout.db
 .bookmaker_profiles/
+
+# Playwright MCP session logs
+.playwright-mcp/

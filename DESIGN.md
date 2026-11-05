@@ -2,6 +2,9 @@
 
 <!-- impeccable:design-schema 1 -->
 
+> The sections below describe the live dashboard at `/`. Its replacement is
+> being built at `/prototype`, see "Direction: match centre" at the end.
+
 ## World
 
 Dark Premium fintech dashboard (Stripe/Vercel register) with one football
@@ -82,3 +85,41 @@ Every list/stat view has three real states — loading (`LoadingState`),
 error with retry (`ErrorState`), and a considered empty state
 (`EmptyState`, per-screen copy) — never a placeholder assuming data
 exists, per PRODUCT.md's Evidence on Hand.
+
+## Direction: match centre (`/prototype`, demo data)
+
+Replaces the "dry fintech" world above once approved. A calm sports app in the
+spirit of Sofascore or FotMob, where betting is the centre and real club crests
+bring the colour. Playfulness is reserved for football moments, never the chrome.
+
+**Tokens** live in `miniapp/src/app/prototype/prototype.css`, scoped under
+`.pn-stage`, with a separate light set under `[data-theme="light"]`. Surfaces
+`--bg --s1 --s2 --s3`; text `--tx --tx2`; `--accent` green for actions and the
+bot's advice; `--gold` only for money won; `--live` red for live and stop;
+`--warn` amber for caution. Numbers use Oswald, body text Inter.
+
+**Motion** tokens are the `M` object in `prototype/fx.tsx` (durations, easings,
+springs). Rules:
+- Motion follows events and shows cause and effect: odds fly into the coupon, a
+  card grows into its sheet and back, money lands and only then the bank rolls.
+- Nothing loops at rest except the live dot.
+- A goal plays out in order: broadcast panel, then the board updates, then the
+  bet card flips. A goal against the bet stays neutral.
+- Everything honours reduced motion and the "Меньше анимации" switch.
+
+**Haptics**: light for taps, medium for a goal against, success for a goal for
+and for confirming, warning for VAR and red cards.
+
+**Football language that stays**: red card for a stop, yellow card icon for a
+caution, the rolling ball in the dock, fan reactions, confetti on a winning full
+time, keepy-uppy on an empty feed.
+
+**Deliberately excluded**: levels, XP, streaks and login rewards, anything that
+celebrates placing a bet, any nudge to bet more or to chase a loss.
+
+**States**: every data view handles loading, empty, error, offline, stale and
+"no key", through the one `FeedNotice` / note pattern. Data shows its age and
+source ("Обновлено 12 с назад", "Claude, оценено 12 мин назад").
+
+**Trust**: facts behind a pick carry a "Факт" or "Слух" tag. Bank changes only
+after an explicit confirm. Limits and a 24-hour pause sit next to the money.
