@@ -50,18 +50,16 @@ function profitOf(p: Pick) {
 function ModelVsMarket() {
   const { data } = useForecastScores();
   if (!data || !data.forecasts) return null;
-  const verdict = data.low_sample
-    ? `Рано судить: ${data.forecasts} из ${data.min_sample} прогнозов`
-    : data.beats_market ? "Модель точнее рынка" : "Модель не точнее рынка: реальные деньги сюда не стоит";
+  const verdict = data.low_sample ? "Рано судить" : data.beats_market ? "Модель точнее рынка" : "Модель не точнее рынка";
+  const detail = data.low_sample ? `${data.forecasts} из ${data.min_sample} прогнозов. ` : data.beats_market ? "" : "Реальные деньги сюда не стоит. ";
   return (
-    <section className="pn-panel pn-panel--flat">
+    <section className="pn-verdict">
       <div className="pn-row">
-        <h2 className="pn-h2">Модель против рынка</h2>
+        <span className="pn-small pn-muted">Модель против рынка</span>
         <HelpButton topic="brier" />
       </div>
-      <div className="pn-row pn-small"><span>Ошибка модели</span><b className="pn-num" style={{ fontSize: 16 }}>{data.model_brier?.toFixed(3)}</b></div>
-      <div className="pn-row pn-small"><span>Ошибка рынка</span><b className="pn-num" style={{ fontSize: 16 }}>{data.market_brier?.toFixed(3)}</b></div>
-      <p className="pn-small pn-muted">{verdict}. Чем меньше ошибка, тем лучше.</p>
+      <h2>{verdict}</h2>
+      <p className="pn-small pn-muted">{detail}Ошибка модели {data.model_brier?.toFixed(3)}, рынка {data.market_brier?.toFixed(3)}: чем меньше, тем лучше.</p>
     </section>
   );
 }
@@ -107,25 +105,23 @@ export function StatsScreen() {
         {view === "overview" ? (
           <motion.div key="o" className="pn-stack" style={{ gap: 12 }} initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ duration: M.dur.fast }}>
             <ModelVsMarket />
-            {form.length > 0 && (
-              <section className="pn-panel pn-panel--flat">
-                <div className="pn-row">
-                  <b style={{ fontWeight: 600 }}>Форма</b>
-                  <FormPips form={form} />
-                </div>
-              </section>
-            )}
             {s.settled > 0 && (
-              <div className="pn-grid2">
-                <Kpi label="Процент побед" value={`${s.win_rate.toFixed(1)}%`} sub={`${s.wins} из ${s.settled}, диапазон ${s.win_rate_ci[0].toFixed(0)}–${s.win_rate_ci[1].toFixed(0)}%`} topic="winrate" />
+              <div className="pn-kpis" data-wide={s.avg_clv !== null && s.brier_score !== null}>
+                <Kpi label="Побед" value={`${s.win_rate.toFixed(1)}%`} sub={`${s.wins} из ${s.settled}, диапазон ${s.win_rate_ci[0].toFixed(0)}–${s.win_rate_ci[1].toFixed(0)}%`} topic="winrate" />
                 <Kpi label="ROI" value={signed(s.roi)} sub="на дистанции" topic="roi" tone={toneOf(s.roi)} />
                 {s.avg_clv !== null && <Kpi label="Плюс к линии" value={signed(s.avg_clv)} sub={`по ${s.clv_sample} ставкам`} topic="clv" tone={toneOf(s.avg_clv)} />}
-                {s.brier_score !== null && <Kpi label="Точность модели" value={s.brier_score.toFixed(3)} sub="0 идеал, 0.25 монетка" topic="brier" />}
+                {s.brier_score !== null && <Kpi label="Точность" value={s.brier_score.toFixed(3)} sub="0 идеал, 0.25 монетка" topic="brier" />}
+              </div>
+            )}
+            {form.length > 0 && (
+              <div className="pn-row" style={{ padding: "2px 2px" }}>
+                <b style={{ fontWeight: 600 }}>Форма</b>
+                <FormPips form={form} />
               </div>
             )}
             {s.low_sample && s.settled > 0 && <p className="pn-small pn-muted">Выборка мала: {s.settled} закрытых ставок. Выводы лучше делать после 30 и больше.</p>}
             {leagues.length > 0 && (
-              <section className="pn-panel pn-panel--flat">
+              <section className="pn-stack" style={{ marginTop: 8 }}>
                 <h2 className="pn-h2">По лигам</h2>
                 <table className="pn-table">
                   <thead>

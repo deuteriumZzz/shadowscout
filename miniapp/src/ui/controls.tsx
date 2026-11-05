@@ -1,8 +1,9 @@
 "use client";
 
-import { motion, useDragControls, type PanInfo } from "framer-motion";
-import { Info } from "lucide-react";
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { AnimatePresence, motion, useDragControls, type PanInfo } from "framer-motion";
+import { ChevronRight, Info } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { HelpTopic } from "@/lib/help";
 import { haptic } from "@/lib/telegram";
 import { useGame } from "@/store/app-store";
@@ -56,7 +57,11 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Sheets can stack: Escape closes only the top one.
+    const onKey = (e: KeyboardEvent) => {
+      const open = document.querySelectorAll(".pn-sheet");
+      if (e.key === "Escape" && open[open.length - 1] === sheet.current) onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -93,6 +98,41 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         <div className="pn-sheet__grab" onPointerDown={(e) => controls.start(e)} aria-hidden="true"><i /></div>
         <div className="pn-sheet__body">{children}</div>
       </motion.div>
+    </>
+  );
+}
+
+type RowLook = { icon: ReactNode; tint: string; label: string; value?: ReactNode; tone?: string };
+
+function RowContent({ icon, tint, label, value, tone }: RowLook) {
+  return (
+    <>
+      <span className="pn-listrow__icon" style={{ background: tint }}>{icon}</span>
+      <span className="pn-listrow__label">{label}</span>
+      {value !== undefined && <span className="pn-listrow__value" style={{ color: tone }}>{value}</span>}
+    </>
+  );
+}
+
+/** A plain row for a fact with nothing behind it. */
+export function ListRow(look: RowLook) {
+  return <div className="pn-listrow"><RowContent {...look} /></div>;
+}
+
+/** A row that opens what it names in a sheet, so rare things stay out of the way until asked for. */
+export function SheetRow({ title, children, ...look }: RowLook & { title?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const phone = typeof document !== "undefined" ? document.querySelector(".pn-phone") : null;
+  return (
+    <>
+      <motion.button className="pn-listrow" whileTap={{ scale: 0.985 }} onClick={() => setOpen(true)}>
+        <RowContent {...look} />
+        <ChevronRight size={17} color="var(--tx2)" aria-hidden="true" style={{ flex: "none" }} />
+      </motion.button>
+      {phone && createPortal(
+        <AnimatePresence>{open && <Sheet key="sheet" title={title ?? look.label} onClose={() => setOpen(false)}>{children}</Sheet>}</AnimatePresence>,
+        phone,
+      )}
     </>
   );
 }

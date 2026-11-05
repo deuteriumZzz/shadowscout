@@ -203,11 +203,10 @@ function ModelChain() {
   );
 }
 
-export function ConnectionsSection() {
+function ConnectionList({ title, groups, children }: { title: string; groups: Item["group"][]; children?: React.ReactNode }) {
   const { data, isError, error } = useConnections();
   const [openName, setOpenName] = useState<string | null>(null);
   const open = data.items.find((i) => i.name === openName);
-  const group = (g: Item["group"]) => data.items.filter((i) => i.group === g);
   const phone = typeof document !== "undefined" ? document.querySelector(".pn-phone") : null;
 
   if (isError) return <p className="pn-stop-note" data-tone="warn">{errorText(error)} Подключения недоступны, ключи не сохранятся.</p>;
@@ -215,13 +214,9 @@ export function ConnectionsSection() {
   return (
     <>
       <section className="pn-panel pn-panel--flat">
-        <h2 className="pn-h2">Модель для прогнозов</h2>
-        {group("llm").map((i) => <ConnectionRow key={i.name} item={i} onOpen={() => setOpenName(i.name)} />)}
-        <ModelChain />
-      </section>
-      <section className="pn-panel pn-panel--flat">
-        <h2 className="pn-h2">Футбольные данные и кэфы</h2>
-        {[...group("football"), ...group("odds")].map((i) => <ConnectionRow key={i.name} item={i} onOpen={() => setOpenName(i.name)} />)}
+        <h2 className="pn-h2">{title}</h2>
+        {data.items.filter((i) => groups.includes(i.group)).map((i) => <ConnectionRow key={i.name} item={i} onOpen={() => setOpenName(i.name)} />)}
+        {children}
       </section>
       {phone && createPortal(
         <AnimatePresence>{open && <ConnectionSheet key={open.name} item={open} onClose={() => setOpenName(null)} />}</AnimatePresence>,
@@ -230,3 +225,7 @@ export function ConnectionsSection() {
     </>
   );
 }
+
+export const ModelConnections = () => <ConnectionList title="Модель для прогнозов" groups={["llm"]}><ModelChain /></ConnectionList>;
+
+export const DataConnections = () => <ConnectionList title="Футбольные данные и кэфы" groups={["football", "odds"]} />;

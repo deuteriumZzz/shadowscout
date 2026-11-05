@@ -21,7 +21,7 @@ const BOARD_FADE_END = 100;
 const LIVE_REFRESH_MS = 20_000;
 const IDLE_REFRESH_MS = 120_000;
 
-type View = "overview" | "events" | "stats" | "lineups";
+type View = "forecast" | "overview" | "events" | "stats" | "lineups";
 
 const KIND_LABEL: Record<EventKind, string> = { goal: "Гол", yellow: "Жёлтая карточка", red: "Красная карточка", sub: "Замена" };
 
@@ -220,7 +220,7 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
   const boardScale = useTransform(scrollY, [0, BOARD_FADE_END], [1, 0.94]);
   const boardOpacity = useTransform(scrollY, [0, BOARD_FADE_END], [1, 0.35]);
 
-  const [view, setView] = useState<View>("overview");
+  const [chosen, setChosen] = useState<View | null>(null);
   const { data, isPending, isError, refetch } = useQuery({
     queryKey: ["match-detail", espn?.id],
     queryFn: () => fetchDetail(espn!.id, espn!.code),
@@ -243,6 +243,14 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
   const awayScore = data?.awayScore ?? espn?.awayScore ?? 0;
   const clock = data?.clock ?? espn?.clock ?? "";
   const when = new Date(match.start).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  // A forecast is for a match that hasn't started: once it kicks off, the tab goes and the match takes over.
+  const canForecast = match.options.length > 0 && state === "pre";
+  const view: View = chosen === "forecast" && !canForecast ? "overview" : chosen ?? (canForecast ? "forecast" : "overview");
+  const tabs: { id: View; label: string }[] = [
+    ...(canForecast ? [{ id: "forecast" as const, label: "Прогноз" }] : []),
+    { id: "overview", label: "Обзор" },
+    ...(data ? [{ id: "events" as const, label: "События" }, { id: "stats" as const, label: "Статистика" }, { id: "lineups" as const, label: "Составы" }] : []),
+  ];
 
   return createPortal(
     <motion.div className="pn-detail" role="dialog" aria-modal="true" aria-label={`${match.home.name} против ${match.away.name}`} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={M.spring.sheet}>
@@ -292,36 +300,32 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
         </motion.section>
 
         {data && <MatchTimeline detail={data} match={match} />}
-        {match.options.length > 0 && state === "pre" && <ForecastSection home={match.home.name} away={match.away.name} league={match.league} />}
-        <PriceLine match={match} detail={data} />
-
-        {!espn ? (
-          <Empty>Для этого матча нет подробных данных: мы не смогли надёжно найти его в источнике статистики.</Empty>
-        ) : isPending ? (
-          <div className="pn-skeleton" style={{ height: 220 }} aria-busy="true" />
-        ) : isError && !data ? (
-          <section className="pn-notice" role="status">
-            <p className="pn-small pn-muted">Данные матча сейчас недоступны.</p>
-            <button className="pn-btn pn-btn--ghost" onClick={() => refetch()}>Повторить</button>
-          </section>
-        ) : data ? (
-          <>
-            <Segmented<View>
-              label="Раздел матча"
-              value={view}
-              onChange={setView}
-              options={[{ id: "overview", label: "Обзор" }, { id: "events", label: "События" }, { id: "stats", label: "Статистика" }, { id: "lineups", label: "Составы" }]}
-            />
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div key={view} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: M.dur.fast }}>
-                {view === "overview" && <Overview detail={data} match={match} />}
-                {view === "events" && <Events detail={data} match={match} />}
-                {view === "stats" && <Stats detail={data} match={match} />}
-                {view === "lineups" && <Pitch detail={data} match={match} />}
-              </motion.div>
-            </AnimatePresence>
-          </>
-        ) : null}
+        {tabs.length > 1 && <Segmented<View> label="Раздел матча" value={view} onChange={setChosen} options={tabs} />}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div key={view} className="pn-stack" style={{ gap: 12 }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: M.dur.fast }}>
+            {view === "forecast" && <ForecastSection home={match.home.name} away={match.away.name} league={match.league} />}
+            {view === "overview" && (
+              <>
+                <PriceLine match={match} detail={data} />
+                {!espn ? (
+                  <Empty>Для этого матча нет подробных данных: мы не смогли надёжно найти его в источнике статистики.</Empty>
+                ) : isPending ? (
+                  <div className="pn-skeleton" style={{ height: 220 }} aria-busy="true" />
+                ) : isError && !data ? (
+                  <section className="pn-notice" role="status">
+                    <p className="pn-small pn-muted">Данные матча сейчас недоступны.</p>
+                    <button className="pn-btn pn-btn--ghost" onClick={() => refetch()}>Повторить</button>
+                  </section>
+                ) : data ? (
+                  <Overview detail={data} match={match} />
+                ) : null}
+              </>
+            )}
+            {data && view === "events" && <Events detail={data} match={match} />}
+            {data && view === "stats" && <Stats detail={data} match={match} />}
+            {data && view === "lineups" && <Pitch detail={data} match={match} />}
+          </motion.div>
+        </AnimatePresence>
       </div>
       {match.options.length > 0 && state !== "post" && (
         <div className="pn-detail__foot">

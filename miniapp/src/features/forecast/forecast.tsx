@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronRight, Check, ExternalLink, Sparkles, Wand2, X } from "lucide-react";
+import { Check, ChevronRight, ExternalLink, Wand2, X } from "lucide-react";
 import { useMutationState } from "@tanstack/react-query";
 import { useEffect, useState, type MouseEvent } from "react";
 import { Ball, LeagueLogo } from "@/ui/football";
@@ -39,11 +39,27 @@ function OutcomeBars({ model, market }: { model?: number; market?: number }) {
   );
 }
 
-function MarketRows({ forecast, marketKey, market }: { forecast: Forecast; marketKey: string; market: ForecastMarket }) {
+/** Folded detail under a decision: its title, its short answer, and the rest on a tap. */
+function Fold({ title, value, children }: { title: string; value?: string; children: React.ReactNode }) {
+  return (
+    <details className="pn-fold">
+      <summary>
+        <span>{title}</span>
+        {value && <span className="pn-fold__value">{value}</span>}
+        <ChevronRight size={17} aria-hidden="true" />
+      </summary>
+      <div className="pn-stack" style={{ gap: 8 }}>{children}</div>
+    </details>
+  );
+}
+
+const marketTitle = (marketKey: string, market: ForecastMarket) => `${MARKET_TITLE[marketKey] ?? marketKey}${market.line ? ` ${market.line}` : ""}`;
+
+function MarketRows({ forecast, marketKey, market, titled = true }: { forecast: Forecast; marketKey: string; market: ForecastMarket; titled?: boolean }) {
   const outcomes = Object.keys(market.estimate ?? market.fair ?? {});
   return (
     <div className="pn-stack" style={{ gap: 6 }}>
-      <b style={{ fontWeight: 600 }}>{MARKET_TITLE[marketKey] ?? marketKey}{market.line ? ` ${market.line}` : ""}</b>
+      {titled && <b style={{ fontWeight: 600 }}>{marketTitle(marketKey, market)}</b>}
       {outcomes.length > 0 && (
         <table className="pn-table">
           <thead>
@@ -75,8 +91,7 @@ function MarketRows({ forecast, marketKey, market }: { forecast: Forecast; marke
 function Facts({ forecast }: { forecast: Forecast }) {
   if (!forecast.facts.length && !forecast.missing.length && !forecast.facts_dropped) return null;
   return (
-    <div className="pn-stack" style={{ gap: 8 }}>
-      <b style={{ fontWeight: 600 }}>На чём основан прогноз</b>
+    <Fold title="На чём основан прогноз" value={forecast.facts.length ? `фактов: ${forecast.facts.length}` : undefined}>
       {forecast.facts.map((f, i) => (
         <div key={`${f.text}${i}`}>
           <p className="pn-small"><b style={{ fontWeight: 600 }}>{f.status === "confirmed" ? "Факт" : "Слух"}:</b> {f.text}</p>
@@ -89,21 +104,7 @@ function Facts({ forecast }: { forecast: Forecast }) {
       ))}
       {forecast.facts_dropped > 0 && <p className="pn-small pn-muted">Отброшено фактов без источника: {forecast.facts_dropped}</p>}
       {forecast.missing.length > 0 && <p className="pn-small pn-muted">Не удалось выяснить: {forecast.missing.join("; ")}</p>}
-    </div>
-  );
-}
-
-/** The model's own words on why, folded so the decision stays on top. */
-function Analysis({ text }: { text: string }) {
-  if (!text) return null;
-  return (
-    <details className="pn-analysis">
-      <summary>
-        Разбор модели
-        <ChevronRight size={17} aria-hidden="true" />
-      </summary>
-      <p className="pn-small">{text}</p>
-    </details>
+    </Fold>
   );
 }
 
@@ -173,9 +174,19 @@ function ForecastBody({ forecast, showLink = false }: { forecast: Forecast; show
           </motion.p>
         ))}
       </AnimatePresence>
-      <motion.div variants={revealItem}><Analysis text={forecast.analysis_text} /></motion.div>
+      {forecast.analysis_text && (
+        <motion.div variants={revealItem}><Fold title="Разбор модели"><p className="pn-small pn-prose">{forecast.analysis_text}</p></Fold></motion.div>
+      )}
       {Object.entries(forecast.markets).map(([key, market]) => (
-        <motion.div key={key} variants={revealItem}><MarketRows forecast={forecast} marketKey={key} market={market} /></motion.div>
+        <motion.div key={key} variants={revealItem}>
+          {key === "h2h" ? (
+            <MarketRows forecast={forecast} marketKey={key} market={market} />
+          ) : (
+            <Fold title={marketTitle(key, market)} value={market.pick ? pickName(forecast.match, key, market.pick, market.line) : "без ставки"}>
+              <MarketRows forecast={forecast} marketKey={key} market={market} titled={false} />
+            </Fold>
+          )}
+        </motion.div>
       ))}
       <motion.div variants={revealItem}><Facts forecast={forecast} /></motion.div>
     </motion.div>
@@ -221,8 +232,7 @@ export function ForecastSection({ home, away, league }: { home: string; away: st
     select: (m) => m.state.variables as { home: string; away: string } | undefined,
   }).some((v) => v?.home === home && v?.away === away);
   return (
-    <section className="pn-panel pn-panel--flat">
-      <h2 className="pn-h2" style={{ display: "flex", alignItems: "center", gap: 8 }}><Sparkles size={17} color="var(--gold)" aria-hidden="true" /> Прогноз</h2>
+    <section className="pn-stack pn-forecast">
       {forecast ? (
         <ForecastBody forecast={forecast} />
       ) : running ? (

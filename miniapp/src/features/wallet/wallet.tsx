@@ -7,8 +7,8 @@ import { M } from "@/ui/motion";
 import { positionName, type LiveMatch } from "@/lib/feeds/polymarket";
 import { errorText } from "@/lib/labels";
 import { openLink } from "@/lib/telegram";
-import { useGame } from "@/store/app-store";
 import { useConnectWallet, useDisconnectWallet, useWallet } from "@/hooks/use-shadowscout";
+import { SheetRow } from "@/ui/controls";
 import type { WalletPosition } from "@/lib/types";
 
 /** Real money to the cent. Null means the figure couldn't be read, so it never renders as 0. */
@@ -99,8 +99,7 @@ function PositionRow({ position, score }: { position: WalletPosition; score?: st
 }
 
 /** The real balance, kept visibly apart from the no-money bank below it. */
-export function WalletPanel() {
-  const { dispatch } = useGame();
+function WalletPanel() {
   const { data, isPending, isError, error, refetch } = useWallet();
   const [showClosed, setShowClosed] = useState(false);
 
@@ -114,13 +113,7 @@ export function WalletPanel() {
       </section>
     );
   }
-  if (!data.connected) {
-    return (
-      <motion.button className="pn-btn pn-btn--ghost" style={{ width: "100%" }} whileTap={{ scale: M.press }} onClick={() => dispatch({ type: "TAB", tab: "settings" })}>
-        <Wallet size={16} aria-hidden="true" /> Показать настоящий баланс Polymarket
-      </motion.button>
-    );
-  }
+  if (!data.connected) return null;
   return (
     <section className="pn-panel pn-panel--flat">
       <span className="pn-small pn-muted">Кошелёк Polymarket · настоящие деньги</span>
@@ -157,6 +150,18 @@ export function WalletPanel() {
       )}
       <p className="pn-small pn-muted">Данные Polymarket и сети Polygon, {new Date(data.updated_at).toLocaleTimeString("ru-RU")}.</p>
     </section>
+  );
+}
+
+/** The real wallet as one row: its balance at a glance, everything else one tap away. */
+export function WalletRow() {
+  const { data, isError } = useWallet();
+  const value = isError ? "нет данных" : !data ? "" : data.connected ? usd(data.total) : "не подключён";
+  return (
+    <SheetRow icon={<Wallet size={17} aria-hidden="true" />} tint="#1fb155" label="Кошелёк Polymarket" value={value}>
+      <WalletPanel />
+      <WalletSettings />
+    </SheetRow>
   );
 }
 

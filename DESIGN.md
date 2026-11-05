@@ -36,6 +36,11 @@ One app shell: app bar, scrolling content, bottom dock with five tabs (Став�
 Live, Банк, Статистика, Настройки), safe-area aware for Telegram's WebView. One
 match screen for the whole app, so Telegram's Back button closes it from any tab.
 
+Balance: each screen has one main thing, large and without a panel. A panel is for
+what you tap, everything else sits on the background and is separated by space. Rare
+things go behind a row that opens a sheet (`SheetRow`). What stops bets never hides
+behind a tap: its state stays on the row or the screen.
+
 ## Motion
 
 Tokens are the `M` object in `miniapp/src/ui/motion.ts` (durations, easings,

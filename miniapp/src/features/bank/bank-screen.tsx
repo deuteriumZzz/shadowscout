@@ -1,15 +1,15 @@
 "use client";
 
 import { animate, motion } from "framer-motion";
-import { Minus, Pause, Pencil, Play, Plus, ShieldAlert, ShieldCheck, Wallet } from "lucide-react";
+import { Banknote, CircleSlash, Minus, Pause, Pencil, Play, Plus, ShieldAlert, ShieldCheck, Wallet } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { WalletPanel } from "@/features/wallet/wallet";
+import { WalletRow } from "@/features/wallet/wallet";
 import { useBankroll, useEquityCurve, useLimits, useSetLimits } from "@/hooks/use-shadowscout";
 import { errorText } from "@/lib/labels";
 import { haptic } from "@/lib/telegram";
 import type { EquityPoint } from "@/lib/types";
 import { useGame } from "@/store/app-store";
-import { HelpButton, Segmented, useHold } from "@/ui/controls";
+import { HelpButton, ListRow, Segmented, SheetRow, useHold } from "@/ui/controls";
 import { M } from "@/ui/motion";
 import { FeedNotice } from "@/ui/notice";
 import { Odometer } from "@/ui/numbers";
@@ -153,6 +153,17 @@ function Limits() {
   );
 }
 
+/** The daily limit at a glance. A pause is never hidden behind the tap. */
+function LimitRow() {
+  const { data, isError } = useLimits();
+  const value = isError ? "нет данных" : !data ? "" : data.paused_until ? "пауза" : data.daily_limit ? money(data.daily_limit) : "нет";
+  return (
+    <SheetRow icon={<CircleSlash size={17} aria-hidden="true" />} tint="#d9534a" label="Дневной лимит" value={value} tone={data?.paused_until ? "var(--warn)" : undefined}>
+      <Limits />
+    </SheetRow>
+  );
+}
+
 function ApiNotice({ error, retry }: { error: unknown; retry: () => void }) {
   return (
     <div className="pn-screen">
@@ -174,7 +185,7 @@ export function BankScreen() {
   if (!bank) {
     return (
       <div className="pn-screen">
-        <WalletPanel />
+        <div className="pn-list"><WalletRow /></div>
         <FeedNotice icon={<Wallet size={26} aria-hidden="true" />} title="Задайте банк" text="От него считаются размер ставки, просадка и стоп. Пока это режим без денег: сумма условная." action="Указать сумму" onAction={() => dispatch({ type: "SHEET", sheet: { kind: "bank" } })} />
       </div>
     );
@@ -185,75 +196,64 @@ export function BankScreen() {
 
   return (
     <div className="pn-screen">
-      <WalletPanel />
       <section className="pn-bank">
-        <span className="pn-small pn-muted">Условный банк · режим без денег</span>
-        <span className="pn-bank__value" style={{ display: "inline-flex", alignItems: "baseline", gap: 8 }}><Odometer value={Math.round(bank.capital)} /><span style={{ fontSize: 26, color: "var(--tx2)" }}>{state.currency}</span></span>
+        <div className="pn-row">
+          <span className="pn-small pn-muted">Условный банк, без денег</span>
+          <motion.button className="pn-bank__edit" whileTap={{ scale: M.press }} onClick={() => dispatch({ type: "SHEET", sheet: { kind: "bank" } })}>
+            <Pencil size={13} aria-hidden="true" /> Изменить
+          </motion.button>
+        </div>
+        <span className="pn-bank__value" style={{ display: "inline-flex", alignItems: "baseline", gap: 8 }}><Odometer value={Math.round(bank.capital)} /><span style={{ fontSize: 24, color: "var(--tx2)" }}>{state.currency}</span></span>
         <span className="pn-small" style={{ color: change >= 0 ? "var(--good)" : "var(--bad)" }}>
           {change >= 0 ? "+" : "−"}{money(change)} за {CAPITAL_LABEL[period].toLowerCase()}
         </span>
       </section>
 
-      <div className="pn-grid2">
-        <motion.button className="pn-btn pn-btn--ghost" whileTap={{ scale: M.press }} onClick={() => dispatch({ type: "SHEET", sheet: { kind: "bank" } })}>
-          <Pencil size={16} aria-hidden="true" /> Изменить
-        </motion.button>
-        <motion.button className="pn-btn pn-btn--ghost" whileTap={{ scale: M.press }} onClick={() => dispatch({ type: "TAB", tab: "stats" })}>
-          Статистика
-        </motion.button>
-      </div>
+      <Segmented<Period>
+        label="Период графика"
+        value={period}
+        onChange={setPeriod}
+        options={(Object.keys(CAPITAL_LABEL) as Period[]).map((id) => ({ id, label: CAPITAL_LABEL[id] }))}
+      />
+      {series.length > 1 ? (
+        <CapitalChart period={period} series={series} />
+      ) : (
+        <p className="pn-small pn-muted" style={{ padding: "18px 0", textAlign: "center" }}>За этот период закрытых ставок нет. График появится после них.</p>
+      )}
 
-      <section className="pn-panel pn-panel--flat">
-        <Segmented<Period>
-          label="Период графика"
-          value={period}
-          onChange={setPeriod}
-          options={(Object.keys(CAPITAL_LABEL) as Period[]).map((id) => ({ id, label: CAPITAL_LABEL[id] }))}
-        />
-        {series.length > 1 ? (
-          <CapitalChart period={period} series={series} />
-        ) : (
-          <p className="pn-small pn-muted" style={{ padding: "18px 0", textAlign: "center" }}>За этот период закрытых ставок нет. График появится после них.</p>
-        )}
-      </section>
+      {/* What stops bets stays on the screen: protection is never one tap away. */}
+      {bank.clv_gated && (
+        <p className="pn-small" style={{ color: "var(--warn)" }}>
+          Ставки остановлены: цены в среднем уходят против прогнозов модели ({bank.clv_gate_avg?.toFixed(1)}%).
+        </p>
+      )}
 
-      <section className="pn-panel pn-panel--flat">
-        <div className="pn-row">
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-            <b style={{ fontWeight: 600 }}>Просадка от пика</b>
-            <HelpButton topic="stop" />
-          </span>
-          {bank.stopped ? (
-            <span className="pn-small" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--bad)" }}><ShieldAlert size={15} aria-hidden="true" /> Стоп</span>
-          ) : (
-            <span className="pn-small" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--good)" }}><ShieldCheck size={15} aria-hidden="true" /> Норма</span>
-          )}
-        </div>
-        <div className="pn-meter" role="progressbar" aria-label="Просадка относительно стопа" aria-valuenow={Math.round(used * 100)} aria-valuemin={0} aria-valuemax={100}>
-          <motion.span style={{ background: bank.stopped ? "var(--live)" : used > 0.7 ? "var(--warn)" : "var(--accent)" }} initial={{ scaleX: 0 }} animate={{ scaleX: bank.stopped ? 1 : used }} transition={M.spring.gentle} />
-        </div>
-        <div className="pn-row pn-small pn-muted">
-          <span>Сейчас {bank.drawdown_pct.toFixed(1)}%, пик {money(bank.peak)}</span>
-          <span>Стоп {bank.stop_loss_pct.toFixed(0)}%</span>
-        </div>
-        {bank.clv_gated && (
-          <p className="pn-small" style={{ color: "var(--warn)" }}>
-            Ставки остановлены: цены в среднем уходят против прогнозов модели ({bank.clv_gate_avg?.toFixed(1)}%).
-          </p>
-        )}
-      </section>
-
-      <section className="pn-panel pn-panel--flat">
-        <div className="pn-row">
-          <div>
-            <b style={{ fontWeight: 600 }}>Рекомендованная ставка</b>
-            <p className="pn-small pn-muted">Доля от банка</p>
+      <div className="pn-list">
+        <SheetRow
+          icon={bank.stopped ? <ShieldAlert size={17} aria-hidden="true" /> : <ShieldCheck size={17} aria-hidden="true" />}
+          tint={bank.stopped ? "#d9534a" : "#1fb155"}
+          label="Защита банка"
+          value={bank.stopped ? "стоп" : "норма"}
+          tone={bank.stopped ? "var(--bad)" : "var(--good)"}
+        >
+          <div className="pn-row">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+              <h2 className="pn-h2">Просадка от пика</h2>
+              <HelpButton topic="stop" />
+            </span>
           </div>
-          <span className="pn-num" style={{ fontSize: 24 }}>{bank.stopped || bank.suggested_stake === null ? "—" : money(bank.suggested_stake)}</span>
-        </div>
-      </section>
-
-      <Limits />
+          <div className="pn-meter" role="progressbar" aria-label="Просадка относительно стопа" aria-valuenow={Math.round(used * 100)} aria-valuemin={0} aria-valuemax={100}>
+            <motion.span style={{ background: bank.stopped ? "var(--live)" : used > 0.7 ? "var(--warn)" : "var(--accent)" }} initial={{ scaleX: 0 }} animate={{ scaleX: bank.stopped ? 1 : used }} transition={M.spring.gentle} />
+          </div>
+          <div className="pn-row pn-small pn-muted">
+            <span>Сейчас {bank.drawdown_pct.toFixed(1)}%, пик {money(bank.peak)}</span>
+            <span>Стоп {bank.stop_loss_pct.toFixed(0)}%</span>
+          </div>
+        </SheetRow>
+        <ListRow icon={<Banknote size={17} aria-hidden="true" />} tint="#1c7bc4" label="Рекомендованная ставка" value={bank.stopped || bank.suggested_stake === null ? "—" : money(bank.suggested_stake)} />
+        <LimitRow />
+        <WalletRow />
+      </div>
     </div>
   );
 }
