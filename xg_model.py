@@ -1,161 +1,86 @@
-"""Independent xG-based cross-check via Understat.com's team match feed —
-same Poisson-grid math as poisson_model.py, but expected goals come from
-shot-quality (xG) instead of realized scoring/conceding, so it isn't
-fooled by finishing variance the goals-based model can't see.
+"""Independent xG-based cross-check via StrikerAPI's per-club season averages.
 
-Understat has no official API or published ToS for this endpoint (found by
-inspecting its team page's own AJAX call — https://understat.com/getTeamData/
-<team>/<season>) and no team-name search, so this needs API_FOOTBALL_KEY too,
-purely to resolve whatever name the user typed to Understat's own English
-team title. Treat every failure — network, 404, a team Understat doesn't
-cover, a site restructure — as "skip this cross-check", the same contract
-poisson_model.py already has, never as an error to surface to the user.
-Understat only covers the top-5 European leagues plus the RPL, so this
-returns None for everything else (Ligue 1's smaller clubs, most of the
-Champions League's non-top-5 sides, etc.) — that's expected, not a bug.
+Same Poisson-grid math as poisson_model.py, but expected goals come from shot
+quality instead of realized scoring, so it isn't fooled by finishing variance.
+The xG is StrikerAPI's own model, refitted by them from time to time, so a past
+value can change later. Any failure (no key, network, an uncovered league or
+club) means "skip this cross-check": it's a second opinion, never an error.
+
+One call covers a whole league at 5 credits, from a free allowance of 500 a
+month, hence the long cache.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import logging
+import time
 
 import requests
 
-import football_data
+import connections
+from espn_data import LEAGUES, league_key, same_team
 from poisson_model import _grid_probabilities
 
-BASE_URL = "https://understat.com"
-_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-)
+log = logging.getLogger("shadowscout.xg")
+
+URL = "https://mcp.strikerapi.com/v1/get_team_stats"
+TIMEOUT = 20
+CACHE_SECONDS = 24 * 3600  # their match data refreshes once a day
+MIN_GAMES = 3
+
+_cache: dict[str, tuple[float, list[dict]]] = {}
 
 
-def _current_season() -> int:
-    """Understat/API-Football convention: the year a season started (e.g.
-    2025 for the 2025/26 season). European club seasons start in July/August."""
-    now = datetime.now(timezone.utc)
-    return now.year if now.month >= 7 else now.year - 1
-
-
-def _fetch_matches(team_name: str, season: int) -> list[dict] | None:
-    url = f"{BASE_URL}/getTeamData/{team_name}/{season}"
-    referer = f"{BASE_URL}/team/{team_name.replace(' ', '_')}/{season}"
+def _league_stats(striker_league: str, api_key: str) -> list[dict] | None:
+    now = time.monotonic()
+    cached = _cache.get(striker_league)
+    if cached and now - cached[0] < CACHE_SECONDS:
+        return cached[1]
     try:
-        resp = requests.get(
-            url,
-            headers={
-                "User-Agent": _USER_AGENT,
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": referer,
-            },
-            timeout=15,
+        response = requests.post(
+            URL, json={"league": striker_league}, headers={"x-api-key": api_key}, timeout=TIMEOUT
         )
-    except requests.RequestException:
+        response.raise_for_status()
+        teams = response.json().get("teams") or []
+    except (requests.RequestException, ValueError) as exc:
+        # The exception's text is left out: a request's details stay out of the logs.
+        log.warning("StrikerAPI failed: %s", type(exc).__name__)
         return None
-    if resp.status_code != 200:
+    _cache[striker_league] = (now, teams)
+    return teams
+
+
+def _team(teams: list[dict], name: str) -> dict | None:
+    found = [t for t in teams if same_team(str(t.get("display_name", "")), name)]
+    if len(found) != 1:
         return None
-    try:
-        return resp.json().get("dates", [])
-    except ValueError:
+    team = found[0]
+    usable = (team.get("games") or 0) >= MIN_GAMES and team.get("xg_for") is not None and team.get("xg_against") is not None
+    return team if usable else None
+
+
+def match_probabilities(home: str, away: str, league_hint: str | None, total_point: float = 2.5) -> dict | None:
+    """Same return shape as poisson_model.match_probabilities(), plus "text" for the prompt."""
+    api_key = connections.get_key("striker")
+    key = league_key(league_hint)
+    striker_league = LEAGUES[key]["striker"] if key else None
+    if not (api_key and striker_league):
         return None
-
-
-def team_xg_rates(name: str, api_football_key: str, last: int = 8) -> dict | None:
-    """Average xG created/conceded, split by home/away venue, over a team's
-    last `last` finished matches this season — same shape as
-    football_data.goal_rates() so the Poisson-grid math can be reused
-    unchanged. Returns None if the team can't be resolved to an Understat
-    page, Understat has no data for it, or there's too little of its
-    season played to split by venue."""
-    canonical = football_data.find_team_name(name, api_football_key)
-    if not canonical:
+    teams = _league_stats(striker_league, api_key)
+    if not teams:
         return None
-
-    matches = _fetch_matches(canonical, _current_season())
-    if not matches:
-        return None
-
-    finished = sorted((m for m in matches if m.get("isResult")), key=lambda m: m["datetime"])
-    finished = finished[-last:]
-
-    home_xg = home_xga = away_xg = away_xga = 0.0
-    home_games = away_games = 0
-    for m in finished:
-        try:
-            xg_h, xg_a = float(m["xG"]["h"]), float(m["xG"]["a"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if m.get("side") == "h":
-            home_xg += xg_h
-            home_xga += xg_a
-            home_games += 1
-        elif m.get("side") == "a":
-            away_xg += xg_a
-            away_xga += xg_h
-            away_games += 1
-
-    if home_games == 0 or away_games == 0:
-        return None
-    return {
-        "home_xg_avg": home_xg / home_games,
-        "home_xga_avg": home_xga / home_games,
-        "away_xg_avg": away_xg / away_games,
-        "away_xga_avg": away_xga / away_games,
-    }
-
-
-def match_probabilities(
-    team_a: str, team_b: str, api_football_key: str, total_point: float = 2.5
-) -> dict | None:
-    """team_a is treated as the home side. Same return shape as
-    poisson_model.match_probabilities() — {"h2h", "totals", "expected_goals"}
-    — computed from xG instead of realized goals."""
-    rates_a = team_xg_rates(team_a, api_football_key)
-    rates_b = team_xg_rates(team_b, api_football_key)
-    if not rates_a or not rates_b:
+    a, b = _team(teams, home), _team(teams, away)
+    if not (a and b):
         return None
 
-    lam_home = (rates_a["home_xg_avg"] + rates_b["away_xga_avg"]) / 2
-    lam_away = (rates_b["away_xg_avg"] + rates_a["home_xga_avg"]) / 2
-
+    # ponytail: season averages, not split by venue, so no home advantage. Their match-level
+    # data could split it, at 5+ credits per game; add if the free allowance turns out to allow.
+    lam_home = (a["xg_for"] + b["xg_against"]) / 2
+    lam_away = (b["xg_for"] + a["xg_against"]) / 2
     result = _grid_probabilities(lam_home, lam_away, total_point)
     result["expected_goals"] = {"home": lam_home, "away": lam_away}
+    result["text"] = (
+        f"[StrikerAPI] {home}: xG per game {a['xg_for']:.2f} for, {a['xg_against']:.2f} against, {a['games']} games\n"
+        f"[StrikerAPI] {away}: xG per game {b['xg_for']:.2f} for, {b['xg_against']:.2f} against, {b['games']} games"
+    )
     return result
-
-
-def demo():
-    """Self-check: confirms the math stays internally consistent and
-    responds the right direction to a lopsided xG input — not a live-data
-    test (Understat's endpoint is undocumented and could change).
-
-    Patches via sys.modules[__name__] rather than mock.patch("xg_model...."):
-    the string form re-imports the module under its real name, which is a
-    *second* module object distinct from the one actually running as
-    __main__ when this file is executed directly — the patch would land on
-    the wrong copy and match_probabilities() would still hit the network."""
-    import sys
-    import unittest.mock as mock
-
-    this_module = sys.modules[__name__]
-    fake_rates = {
-        "Strong FC": {"home_xg_avg": 2.2, "home_xga_avg": 0.7, "away_xg_avg": 1.5, "away_xga_avg": 1.1},
-        "Weak FC": {"home_xg_avg": 0.9, "home_xga_avg": 1.9, "away_xg_avg": 0.5, "away_xga_avg": 2.3},
-    }
-    with mock.patch.object(this_module, "team_xg_rates", side_effect=lambda name, key, last=8: fake_rates[name]):
-        result = match_probabilities("Strong FC", "Weak FC", "fake_key")
-
-    assert result is not None
-    total = sum(result["h2h"].values())
-    assert abs(total - 1.0) < 1e-6, f"h2h probs should sum to 1, got {total}"
-    assert result["h2h"]["home"] > result["h2h"]["away"], "much stronger xG side should be favored"
-    assert 0 < result["totals"]["over"] < 1
-
-    with mock.patch.object(this_module, "team_xg_rates", return_value=None):
-        assert match_probabilities("Strong FC", "Weak FC", "fake_key") is None
-
-    print("xg_model.py self-check OK:", result)
-
-
-if __name__ == "__main__":
-    demo()

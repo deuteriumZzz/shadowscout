@@ -3,14 +3,10 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from "react";
 import {
   betFrom,
-  DEMO_HISTORY,
-  DEMO_PICKS,
   goalMood,
   IDLE_SIM,
   payout,
   settle,
-  START_BUDGET,
-  START_PEAK,
   startSim,
   tickSim,
   trackedBets,
@@ -32,7 +28,6 @@ const TICK_MS = 100;
 const MINUTES_PER_TICK = 0.15;
 const TOAST_MS = 2600;
 const LOAD_MS = 650;
-const ODDS_MOVE_MS = 7000;
 
 export interface SlipItem {
   pickId: number;
@@ -172,10 +167,23 @@ export type Action =
   | { type: "STOP_LIFT" }
   | { type: "RESET" };
 
+const PREFS_KEY = "pn-prefs";
+
+type SavedPrefs = { theme?: ThemeChoice; calm?: boolean; currency?: string };
+
+function readSaved(): SavedPrefs {
+  try {
+    return JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as SavedPrefs;
+  } catch {
+    return {};
+  }
+}
+
 function initial(calm: boolean): GameState {
+  const saved = readSaved();
   return {
-    theme: "auto",
-    favorites: ["Arsenal"],
+    theme: saved.theme ?? "auto",
+    favorites: [],
     dailyLimit: 3000,
     lossToday: 0,
     pausedUntil: null,
@@ -185,23 +193,23 @@ function initial(calm: boolean): GameState {
     stories: false,
     tab: "bets",
     tabDirection: 1,
-    loading: true,
-    picks: DEMO_PICKS,
+    loading: false,
+    picks: [],
     slip: [],
     bets: [],
-    budget: START_BUDGET,
-    peak: START_PEAK,
-    history: DEMO_HISTORY,
+    budget: 0,
+    peak: 0,
+    history: [],
     reminders: [],
     toasts: [],
     nextId: 1,
     sheet: null,
     flyer: null,
     sound: false,
-    calm,
+    calm: saved.calm ?? calm,
     stopped: false,
     stopMoment: false,
-    prefs: { goals: true, kickoff: true, newPicks: true, bookmaker: "fonbet", leagues: ["Premier League", "La Liga", "Bundesliga"], currency: "₽" },
+    prefs: { goals: true, kickoff: true, newPicks: true, bookmaker: "fonbet", leagues: [], currency: saved.currency ?? "$" },
     sim: IDLE_SIM,
   };
 }
@@ -442,10 +450,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [loading]);
 
+  const { theme, prefs: { currency } } = state;
   useEffect(() => {
-    const t = setTimeout(() => dispatch({ type: "ODDS_MOVE" }), ODDS_MOVE_MS);
-    return () => clearTimeout(t);
-  }, []);
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ theme, calm, currency }));
+    } catch {
+      // Private mode: settings last until the app closes.
+    }
+  }, [theme, calm, currency]);
 
   // Match clock. Stands still while a moment is on screen.
   const clockRuns = sim.status === "playing" && !sim.moment;

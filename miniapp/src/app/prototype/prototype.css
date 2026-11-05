@@ -403,6 +403,19 @@
 .pn-story__duel { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; }
 .pn-story__zone { position: absolute; top: 60px; bottom: 0; z-index: 1; width: 40%; }
 
+/* --- Real match centre --- */
+.pn-detail { position: absolute; inset: 0; z-index: 22; display: flex; flex-direction: column; background: var(--bg); }
+.pn-detail__head { display: flex; align-items: center; padding: max(env(safe-area-inset-top), 8px) 8px 4px var(--gutter); }
+.pn-detail__body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 4px var(--gutter) 20px; overflow-y: auto; }
+.pn-detail__body > * { flex: none; }
+.pn-detail__foot { padding: 10px var(--gutter) max(env(safe-area-inset-bottom), 12px); border-top: 1px solid var(--line); }
+.pn-player__num { font-size: 10px; font-style: normal; font-weight: 700; color: #fff; }
+
+/* --- Real matches --- */
+.pn-feedbar { padding: 12px var(--gutter) 0; }
+.pn-logo { flex: none; width: 28px; height: 28px; object-fit: contain; }
+.pn-tile--static { cursor: default; }
+
 /* --- Goal moment --- */
 .pn-moment__sweep { position: absolute; inset: 0 auto 0 0; z-index: 1; width: 45%; background: rgba(255, 255, 255, 0.45); transform: skewX(-18deg); pointer-events: none; }
 .pn-moment__disc { position: relative; }

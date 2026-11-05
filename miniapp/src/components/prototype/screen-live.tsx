@@ -23,6 +23,7 @@ import {
   type MatchEvent,
 } from "./engine";
 import { Ball, CardIcon, Confetti, Crest, M, Odometer, RollDigit, Segmented } from "./fx";
+import { LiveNowSection } from "./screen-markets";
 import { thud } from "./sound";
 import { useGame } from "./store";
 import { haptic } from "@/lib/telegram";
@@ -476,74 +477,6 @@ function MatchControls() {
   );
 }
 
-function Idle() {
-  const { state, dispatch } = useGame();
-  const others = state.bets.filter((b) => b.home !== "Arsenal");
-  const mine = state.bets.filter((b) => b.home === "Arsenal");
-  return (
-    <>
-      {state.bets.length > 0 ? (
-        <section className="pn-stack">
-          <h2 className="pn-h2">Мои ставки: {state.bets.length}</h2>
-          {[...mine, ...others].map((b) => (
-            <motion.div key={b.id} className="pn-bet" layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={M.spring.snappy}>
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                <Crest team={b.home} size={22} />
-                <Crest team={b.away} size={22} />
-              </span>
-              <div style={{ minWidth: 0 }}>
-                <div className="pn-bet__label">{b.label}</div>
-                <div className="pn-small pn-muted">{b.home} — {b.away} · ждёт начала</div>
-              </div>
-              <span style={{ textAlign: "right" }}>
-                <span className="pn-num" style={{ display: "block", fontSize: 18 }}>{b.odds.toFixed(2)}</span>
-                <span className="pn-small pn-muted">{money(b.stake)}</span>
-              </span>
-            </motion.div>
-          ))}
-        </section>
-      ) : (
-        <section className="pn-panel pn-panel--flat">
-          <h2 className="pn-h2">Сейчас ваших матчей нет</h2>
-          <p className="pn-small pn-muted">Когда начнётся матч с вашей ставкой, здесь будут счёт, голы и её статус.</p>
-          <motion.button className="pn-btn pn-btn--ghost" whileTap={{ scale: M.press }} onClick={() => dispatch({ type: "TAB", tab: "bets" })}>
-            К прогнозам
-          </motion.button>
-        </section>
-      )}
-
-      <div className="pn-row" style={{ marginTop: 8 }}>
-        <h2 className="pn-h2">Посмотреть демо-матч</h2>
-        <div style={{ width: 110 }}>
-          <Segmented<"1" | "2">
-            label="Скорость демо-матча"
-            value={String(state.sim.speed) as "1" | "2"}
-            onChange={(v) => dispatch({ type: "SIM_SPEED", speed: v === "2" ? 2 : 1 })}
-            options={[{ id: "1", label: "×1" }, { id: "2", label: "×2" }]}
-          />
-        </div>
-      </div>
-      <p className="pn-small pn-muted">90 минут примерно за минуту: так будет выглядеть настоящий матч.</p>
-      {SCENARIOS.map((s, i) => (
-        <motion.button
-          key={s.id}
-          className="pn-scn"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...M.spring.snappy, delay: i * 0.05 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => dispatch({ type: "SIM_START", scenarioId: s.id })}
-        >
-          <span className="pn-scn__play"><Play size={18} fill="currentColor" aria-hidden="true" /></span>
-          <span>
-            <b>{s.title}</b>
-            <span className="pn-small pn-muted">{s.subtitle}</span>
-          </span>
-        </motion.button>
-      ))}
-    </>
-  );
-}
 
 type View = "events" | "stats" | "lineups";
 
@@ -552,7 +485,7 @@ export function LiveScreen() {
   const { sim } = state;
   const [view, setView] = useState<View>("events");
 
-  if (sim.status === "idle") return <div className="pn-screen"><Idle /></div>;
+  if (sim.status === "idle") return <div className="pn-screen"><LiveNowSection /></div>;
 
   return (
     <div className="pn-screen">

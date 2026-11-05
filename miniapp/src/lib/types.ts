@@ -27,6 +27,95 @@ export interface Pick {
   xg_probability: number | null;
   price_verified: 0 | 1;
   recommended_stake: number | null;
+  line: number | null;
+  fair_probability: number | null;
+  blended_probability: number | null;
+  provider: string | null;
+  virtual: 0 | 1;
+}
+
+export interface ForecastMarket {
+  estimate: Record<string, number> | null;
+  fair: Record<string, number> | null;
+  line: number | null;
+  pick: string | null;
+  reason: string;
+}
+
+export interface ForecastFact {
+  text: string;
+  status: "confirmed" | "rumour";
+  source: string;
+  url?: string;
+  date: string | null;
+  checked: boolean;
+}
+
+export interface Forecast {
+  id: number;
+  created_at: string;
+  league: string | null;
+  match: string;
+  commence_time: string | null;
+  provider: string | null;
+  home_goals: number | null;
+  away_goals: number | null;
+  markets: Record<string, ForecastMarket>;
+  facts: ForecastFact[];
+  facts_dropped: number;
+  missing: string[];
+  analysis_text: string;
+  url: string | null;
+  picks: Pick[];
+}
+
+export interface ForecastScores {
+  forecasts: number;
+  model_brier: number | null;
+  market_brier: number | null;
+  beats_market: boolean | null;
+  low_sample: boolean;
+  min_sample: number;
+}
+
+export interface WalletPosition {
+  title: string;
+  outcome: string | null;
+  status: string;
+  avg_price: number | null;
+  price: number | null;
+  value: number | null;
+  cost: number | null;
+  pnl: number | null;
+  realized_pnl: number | null;
+  event_slug: string | null;
+  url: string | null;
+  end_date: string | null;
+}
+
+export type WalletStatus =
+  | { connected: false }
+  | {
+      connected: true;
+      address: string;
+      name: string;
+      // null everywhere below means "couldn't be read", never zero.
+      cash: number | null;
+      positions_value: number | null;
+      total: number | null;
+      unrealized_pnl: number | null;
+      positions: WalletPosition[] | null;
+      closed: WalletPosition[] | null;
+      truncated: boolean;
+      errors: string[];
+      updated_at: string;
+    };
+
+export interface Limits {
+  daily_limit: number;
+  loss_today: number;
+  paused_until: string | null;
+  reason: string | null;
 }
 
 export interface PlacePickResponse extends Pick {

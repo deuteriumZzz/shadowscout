@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import sqlite3
 from contextlib import closing
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS picks (
     news_checked INTEGER NOT NULL DEFAULT 0, -- whether the pre-kickoff news recheck has fired
     model_probability REAL,                  -- LLM's own stated probability for the pick, for calibration
     poisson_probability REAL,                -- independent Poisson-model probability, if available
-    xg_probability REAL,                     -- independent xG-based (Understat) probability, if available
+    xg_probability REAL,                     -- independent xG-based probability, if available
     price_verified INTEGER NOT NULL DEFAULT 0, -- 1 if `odds` is EXECUTION_BOOKMAKER's own quote, 0 if best-of-market
     recommended_stake REAL,                  -- stake shown to the user at recommendation time (correlation-adjusted)
     steam_checked INTEGER NOT NULL DEFAULT 0 -- whether the pre-kickoff line-movement check has fired
@@ -47,6 +48,21 @@ CREATE TABLE IF NOT EXISTS bankroll (
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
+);
+
+-- Every forecast, bet or not, written before kick-off. Scoring only the picks
+-- would flatter the model: this is what it's measured against the market on.
+CREATE TABLE IF NOT EXISTS forecasts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    league TEXT,
+    match TEXT NOT NULL,
+    commence_time TEXT,
+    provider TEXT,
+    prompt_version TEXT,
+    payload TEXT NOT NULL,                   -- JSON: per-market estimate, fair, line, pick, reason; facts; text
+    home_goals INTEGER,                      -- final score, filled in from ESPN
+    away_goals INTEGER
 );
 """
 
@@ -69,6 +85,9 @@ CLV_GATE_WINDOW = 20
 CLV_GATE_MIN_SAMPLE = 20
 CLV_GATE_THRESHOLD = -1.0  # percent
 
+# Below this many scored forecasts, model-vs-market is reported as too early to call.
+MIN_FORECASTS_FOR_VERDICT = 300
+
 
 def _connect():
     conn = sqlite3.connect(DB_PATH)
@@ -88,6 +107,12 @@ def _migrate(conn):
         ("price_verified", "INTEGER NOT NULL DEFAULT 0"),
         ("recommended_stake", "REAL"),
         ("steam_checked", "INTEGER NOT NULL DEFAULT 0"),
+        ("line", "REAL"),
+        ("fair_probability", "REAL"),
+        ("blended_probability", "REAL"),
+        ("provider", "TEXT"),
+        ("prompt_version", "TEXT"),
+        ("virtual", "INTEGER NOT NULL DEFAULT 0"),
     ):
         if column not in existing:
             conn.execute(f"ALTER TABLE picks ADD COLUMN {column} {decl}")
@@ -107,17 +132,113 @@ def save_pick(league: str, match: str, market: str, pick: str, odds: float | Non
               confidence: str, reasoning: str, commence_time: str | None,
               model_probability: float | None = None, poisson_probability: float | None = None,
               xg_probability: float | None = None,
-              price_verified: bool = False, recommended_stake: float | None = None) -> int:
+              price_verified: bool = False, recommended_stake: float | None = None,
+              line: float | None = None, fair_probability: float | None = None,
+              blended_probability: float | None = None, provider: str | None = None,
+              prompt_version: str | None = None) -> int:
     with closing(_connect()) as conn, conn:
         cur = conn.execute(
             "INSERT INTO picks (created_at, league, match, market, pick, odds, confidence, "
             "reasoning, commence_time, model_probability, poisson_probability, xg_probability, "
-            "price_verified, recommended_stake) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "price_verified, recommended_stake, line, fair_probability, blended_probability, "
+            "provider, prompt_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (datetime.now(timezone.utc).isoformat(), league, match, market, pick, odds,
              confidence, reasoning, commence_time, model_probability, poisson_probability,
-             xg_probability, int(price_verified), recommended_stake),
+             xg_probability, int(price_verified), recommended_stake, line, fair_probability,
+             blended_probability, provider, prompt_version),
         )
         return cur.lastrowid
+
+
+def save_forecast(league: str | None, match: str, commence_time: str | None, provider: str | None,
+                  prompt_version: str, payload: dict) -> int:
+    with closing(_connect()) as conn, conn:
+        cur = conn.execute(
+            "INSERT INTO forecasts (created_at, league, match, commence_time, provider, prompt_version, payload) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (datetime.now(timezone.utc).isoformat(), league, match, commence_time, provider, prompt_version,
+             json.dumps(payload, ensure_ascii=False)),
+        )
+        return cur.lastrowid
+
+
+def forecasts_awaiting_result() -> list[sqlite3.Row]:
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            "SELECT * FROM forecasts WHERE home_goals IS NULL AND commence_time IS NOT NULL"
+        ).fetchall()
+    now = datetime.now(timezone.utc)
+    return [r for r in rows if _parse_iso(r["commence_time"]) + SETTLEMENT_BUFFER <= now]
+
+
+def set_forecast_result(forecast_id: int, home_goals: int, away_goals: int):
+    with closing(_connect()) as conn, conn:
+        conn.execute("UPDATE forecasts SET home_goals = ?, away_goals = ? WHERE id = ?",
+                     (home_goals, away_goals, forecast_id))
+
+
+def latest_forecast(match: str) -> dict | None:
+    with closing(_connect()) as conn:
+        row = conn.execute("SELECT * FROM forecasts WHERE match = ? ORDER BY id DESC LIMIT 1", (match,)).fetchone()
+    return _forecast_dict(row) if row else None
+
+
+def recent_forecasts(limit: int = 100) -> list[dict]:
+    with closing(_connect()) as conn:
+        rows = conn.execute("SELECT * FROM forecasts ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [_forecast_dict(r) for r in rows]
+
+
+def _forecast_dict(row: sqlite3.Row) -> dict:
+    return {**dict(row), "payload": json.loads(row["payload"])}
+
+
+def _outcome_won(market: str, outcome: str, line: float | None, home_goals: int, away_goals: int) -> int | None:
+    if market == "h2h":
+        actual = "home" if home_goals > away_goals else "away" if away_goals > home_goals else "draw"
+        return int(outcome == actual)
+    total = home_goals + away_goals
+    if line is None or total == line:
+        return None
+    return int((outcome == "over") == (total > line))
+
+
+def forecast_outcomes(league: str | None = None) -> list[dict]:
+    """One row per outcome of every scored forecast: the model's number, the
+    market's, and what happened."""
+    query = "SELECT * FROM forecasts WHERE home_goals IS NOT NULL"
+    params: tuple = ()
+    if league:
+        query += " AND league = ?"
+        params = (league,)
+    with closing(_connect()) as conn:
+        rows = conn.execute(query, params).fetchall()
+    out = []
+    for row in rows:
+        for market, data in json.loads(row["payload"]).get("markets", {}).items():
+            for outcome, model_p in (data.get("estimate") or {}).items():
+                won = _outcome_won(market, outcome, data.get("line"), row["home_goals"], row["away_goals"])
+                market_p = (data.get("fair") or {}).get(outcome)
+                if won is not None:
+                    out.append({"forecast_id": row["id"], "market": market, "model": model_p, "fair": market_p, "won": won})
+    return out
+
+
+def forecast_scores() -> dict:
+    """Is the model more accurate than simply believing the market? Lower Brier
+    is better, compared only where both have a number. This, not a winning run,
+    is what says whether its estimates are worth anything."""
+    rows = [r for r in forecast_outcomes() if r["fair"] is not None]
+    forecasts = len({r["forecast_id"] for r in rows})
+    if not rows:
+        return {"forecasts": 0, "model_brier": None, "market_brier": None, "beats_market": None,
+                "low_sample": True, "min_sample": MIN_FORECASTS_FOR_VERDICT}
+    model = sum((r["model"] - r["won"]) ** 2 for r in rows) / len(rows)
+    market = sum((r["fair"] - r["won"]) ** 2 for r in rows) / len(rows)
+    low_sample = forecasts < MIN_FORECASTS_FOR_VERDICT
+    return {"forecasts": forecasts, "model_brier": model, "market_brier": market,
+            "beats_market": None if low_sample else model < market,
+            "low_sample": low_sample, "min_sample": MIN_FORECASTS_FOR_VERDICT}
 
 
 def set_status(pick_id: int, status: str):
@@ -353,9 +474,53 @@ def list_settled_picks(limit: int = 100) -> list[sqlite3.Row]:
         ).fetchall()
 
 
-def place(pick_id: int, stake: float | None):
+def place(pick_id: int, stake: float | None, virtual: bool = False):
     with closing(_connect()) as conn, conn:
-        conn.execute("UPDATE picks SET status = 'placed', stake = ? WHERE id = ?", (stake, pick_id))
+        conn.execute("UPDATE picks SET status = 'placed', stake = ?, virtual = ? WHERE id = ?",
+                     (stake, int(virtual), pick_id))
+
+
+def list_open_picks(limit: int = 50) -> list[sqlite3.Row]:
+    """Accepted and waiting for the final whistle."""
+    with closing(_connect()) as conn:
+        return conn.execute(
+            "SELECT * FROM picks WHERE status = 'placed' AND result IS NULL ORDER BY commence_time LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+
+def picks_for_match(match: str) -> list[sqlite3.Row]:
+    with closing(_connect()) as conn:
+        return conn.execute("SELECT * FROM picks WHERE match = ? ORDER BY id DESC", (match,)).fetchall()
+
+
+def virtual_picks_to_settle() -> list[sqlite3.Row]:
+    with closing(_connect()) as conn:
+        rows = conn.execute("SELECT * FROM picks WHERE status = 'placed' AND result IS NULL AND virtual = 1").fetchall()
+    return _due(rows, lambda now, commence: now >= commence + SETTLEMENT_BUFFER)
+
+
+def limits_status() -> dict:
+    """The owner's own brakes, on top of the drawdown stop. `reason` says why new
+    bets are off right now, if they are."""
+    limit = float(get_setting("daily_limit") or 0)
+    paused_until = get_setting("paused_until")
+    now = datetime.now(timezone.utc)
+    if paused_until and _parse_iso(paused_until) <= now:
+        paused_until = None
+    # ponytail: losses count on the day of the match, there's no separate settled-at time.
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            "SELECT stake, commence_time FROM picks WHERE status = 'placed' AND result = 'loss' AND stake IS NOT NULL "
+            "AND commence_time IS NOT NULL"
+        ).fetchall()
+    loss_today = sum(r["stake"] for r in rows if _parse_iso(r["commence_time"]).date() == now.date())
+    reason = None
+    if paused_until:
+        reason = "Вы взяли паузу: ставки выключены на сутки"
+    elif limit and loss_today >= limit:
+        reason = "Дневной лимит потерь исчерпан: до завтра ставок нет"
+    return {"daily_limit": limit, "loss_today": loss_today, "paused_until": paused_until, "reason": reason}
 
 
 # Below this settled-bet count, win rate / ROI are mostly noise — bot.py

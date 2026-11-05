@@ -12,7 +12,6 @@ doesn't need numpy/sklearn for a 2-parameter fit.
 from __future__ import annotations
 
 import math
-from contextlib import closing
 
 import storage
 
@@ -55,25 +54,14 @@ def apply(raw_probability: float, params: tuple[float, float]) -> float:
 
 
 def fit_from_storage(league: str | None = None) -> tuple[float, float] | None:
-    """Fits Platt-scaling params from every pick with a known result and a
-    stored model_probability — any status, not just placed, for the same
-    selection-bias reasoning as storage.stats()'s calibration numbers.
-    Returns None below MIN_SAMPLE_FOR_CALIBRATION (analysis.py should use the
-    raw probability unmodified in that case)."""
-    query = (
-        "SELECT model_probability, result FROM picks "
-        "WHERE model_probability IS NOT NULL AND result IN ('win', 'loss')"
-    )
-    params: tuple = ()
-    if league:
-        query += " AND league = ?"
-        params = (league,)
-    with closing(storage._connect()) as conn:
-        rows = conn.execute(query, params).fetchall()
+    """Fits Platt-scaling params from every outcome of every scored forecast,
+    not just the ones that became picks: picks are selected for looking good,
+    so fitting on them alone would learn a biased correction. Returns None below
+    MIN_SAMPLE_FOR_CALIBRATION (analysis.py then uses the raw probability)."""
+    rows = storage.forecast_outcomes(league)
     if len(rows) < MIN_SAMPLE_FOR_CALIBRATION:
         return None
-    data = [(r["model_probability"], 1 if r["result"] == "win" else 0) for r in rows]
-    return fit(data)
+    return fit([(r["model"], r["won"]) for r in rows])
 
 
 def demo():

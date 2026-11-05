@@ -7,3 +7,4 @@ shadowscout.db
 
 # Playwright MCP session logs
 .playwright-mcp/
+*.secret

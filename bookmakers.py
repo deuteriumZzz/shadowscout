@@ -3,9 +3,8 @@
 analysis.py only talks to the BookmakerAdapter interface. To point the bot
 at a different platform: add one adapter class implementing it, register it
 in ADAPTERS, and set BOOKMAKER_ADAPTER in the environment — no change to
-analysis.py or bot.py. TheOddsApiAdapter (the default) already aggregates
-odds across ~70 bookmakers, so a dedicated adapter is only needed for a book
-that isn't covered there and has no usable API.
+analysis.py or bot.py. PolymarketAdapter (the default) needs no key;
+TheOddsApiAdapter aggregates odds across ~70 bookmakers, for anyone with a key.
 
 Markets: "h2h" (1X2) and "totals" (over/under, main line nearest 2.5) are
 both confirmed Odds API market keys. A "btts" (both teams to score) market
@@ -21,6 +20,7 @@ from abc import ABC, abstractmethod
 import requests
 
 import odds as odds_api
+import polymarket
 from config import DEVIG_METHOD, EXECUTION_BOOKMAKER, MIN_BOOKS_FOR_PICK, REFERENCE_BOOKMAKER
 
 LEAGUE_SPORT_KEYS = {
@@ -64,6 +64,10 @@ class BookmakerAdapter(ABC):
     @abstractmethod
     def commence_time(self, event) -> str | None:
         """ISO8601 kickoff time for the event, or None if unknown."""
+
+    @abstractmethod
+    def teams(self, event) -> tuple[str, str]:
+        """(home, away) as this source names them."""
 
 
 class TheOddsApiAdapter(BookmakerAdapter):
@@ -207,8 +211,64 @@ class TheOddsApiAdapter(BookmakerAdapter):
     def commence_time(self, event):
         return event.get("commence_time") if event else None
 
+    def teams(self, event):
+        return event["home_team"], event["away_team"]
+
+
+class PolymarketAdapter(BookmakerAdapter):
+    """Default: real prices with no key and no bookmaker margin to strip, only
+    its taker fee, which price_for() includes. An exchange's own price is the one
+    you can actually get, so it counts as verified."""
+
+    EMPTY = {"context_text": "", "fair": None, "overround": None, "event": None, "line": None,
+             "book_count": 0, "trusted": False}
+
+    def _find(self, team_a, team_b, league_hint):
+        try:
+            return polymarket.find_match(polymarket.list_matches(league_hint), team_a, team_b)
+        except requests.RequestException:
+            return None
+
+    def get_market(self, team_a, team_b, league_hint, market, api_key):
+        event = self._find(team_a, team_b, league_hint)
+        if not event:
+            return dict(self.EMPTY)
+        quotes = self._quotes(event, market)
+        if not quotes:
+            return {**self.EMPTY, "event": event}
+        fair = polymarket.fair_probabilities(quotes)
+        line = event["totals"]["line"] if market == "totals" else None
+        return {**self.EMPTY, "fair": fair, "overround": sum(q["ask"] for q in quotes.values()) - 1, "event": event,
+                "line": str(line) if line is not None else None, "book_count": 1, "trusted": polymarket.is_trusted(quotes)}
+
+    @staticmethod
+    def _quotes(event, market):
+        if market == "h2h":
+            return event["h2h"]
+        totals = event.get("totals")
+        return {"over": totals["over"], "under": totals["under"]} if market == "totals" and totals else None
+
+    def price_for(self, event, market, outcome):
+        quote = (self._quotes(event, market) or {}).get(outcome) if event else None
+        if not quote:
+            return None, False
+        return round(polymarket.odds_after_fee(quote["ask"], quote["rate"]), 3), True
+
+    def list_fixtures(self, league_hint, api_key):
+        try:
+            return [(m["home"], m["away"]) for m in polymarket.list_matches(league_hint)]
+        except requests.RequestException:
+            return []
+
+    def commence_time(self, event):
+        return event.get("start") if event else None
+
+    def teams(self, event):
+        return event["home"], event["away"]
+
 
 ADAPTERS: dict[str, BookmakerAdapter] = {
+    "polymarket": PolymarketAdapter(),
     "the_odds_api": TheOddsApiAdapter(),
 }
 

@@ -5,9 +5,13 @@ import type {
   BankrollStatus,
   DigestSettings,
   EquityPoint,
+  Forecast,
+  ForecastScores,
+  Limits,
   Pick,
   PlacePickResponse,
   Stats,
+  WalletStatus,
 } from "@/lib/types";
 
 // Background jobs (bot.py) can change picks/bankroll independent of this
@@ -91,6 +95,96 @@ export function useSkipPick() {
   return useMutation({
     mutationFn: (pickId: number) => api.post<Pick>(`/api/picks/${pickId}/skip`),
     onSuccess: (_data, pickId) => removeFromPending(qc, pickId),
+  });
+}
+
+const WALLET_POLL_MS = 30_000;
+
+export function useWallet() {
+  return useQuery({
+    queryKey: ["wallet"],
+    queryFn: () => api.get<WalletStatus>("/api/wallet"),
+    refetchInterval: WALLET_POLL_MS,
+    retry: false,
+  });
+}
+
+export function useConnectWallet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (address: string) => api.post<WalletStatus>("/api/wallet", { address }),
+    onSuccess: (data) => qc.setQueryData(["wallet"], data),
+  });
+}
+
+export function useDisconnectWallet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<WalletStatus>("/api/wallet/delete"),
+    onSuccess: (data) => qc.setQueryData(["wallet"], data),
+  });
+}
+
+export function useOpenPicks() {
+  return useQuery({
+    queryKey: ["picks", "open"],
+    queryFn: () => api.get<Pick[]>("/api/picks/open"),
+    refetchInterval: LIVE_POLL_MS,
+  });
+}
+
+export function useAcceptPick() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pickId: number) => api.post<Pick>(`/api/picks/${pickId}/accept`),
+    onSuccess: (_data, pickId) => {
+      removeFromPending(qc, pickId);
+      qc.invalidateQueries({ queryKey: ["forecasts"] });
+      qc.invalidateQueries({ queryKey: ["picks", "open"] });
+    },
+  });
+}
+
+export function useForecasts() {
+  return useQuery({
+    queryKey: ["forecasts"],
+    queryFn: () => api.get<Forecast[]>("/api/forecasts"),
+    refetchInterval: LIVE_POLL_MS,
+    retry: false,
+  });
+}
+
+export function useMakeForecast() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { home: string; away: string; league: string }) => api.post<Forecast>("/api/forecast", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["forecasts"] });
+      qc.invalidateQueries({ queryKey: ["picks", "pending"] });
+    },
+  });
+}
+
+export function useForecastScores() {
+  return useQuery({
+    queryKey: ["forecast-scores"],
+    queryFn: () => api.get<ForecastScores>("/api/forecast-scores"),
+  });
+}
+
+export function useLimits() {
+  return useQuery({
+    queryKey: ["limits"],
+    queryFn: () => api.get<Limits>("/api/limits"),
+    refetchInterval: LIVE_POLL_MS,
+  });
+}
+
+export function useSetLimits() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { daily_limit?: number; pause?: boolean }) => api.post<Limits>("/api/limits", body),
+    onSuccess: (data) => qc.setQueryData(["limits"], data),
   });
 }
 

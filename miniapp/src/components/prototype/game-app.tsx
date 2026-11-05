@@ -1,7 +1,8 @@
 "use client";
 
 import { animate, AnimatePresence, motion, MotionConfig, useAnimationControls, useMotionValue, useTransform, type MotionValue } from "framer-motion";
-import { BarChart3, Radio, RefreshCw, Settings, ShieldAlert, Ticket, Wallet } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { BarChart3, Radio, Settings, ShieldAlert, Ticket, Wallet } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { goalMood, minuteLabel, trackedBets, type MatchEvent } from "./engine";
 import { Ball, Crest, M, Odometer, ScrollCtx, useTeamColor } from "./fx";
@@ -9,9 +10,11 @@ import { thud } from "./sound";
 import { Onboarding } from "./screen-connections";
 import { BankScreen, SettingsScreen, StatsScreen } from "./screen-club";
 import { LiveScreen } from "./screen-live";
+import { GoalAlerts } from "./screen-markets";
 import { BetsScreen, Sheets, SlipBar } from "./screen-matchday";
 import { WeekStories } from "./screen-stories";
 import { GameProvider, TABS, useGame, type Tab, type ThemeChoice } from "./store";
+import { useBankroll, useOpenPicks, useWallet } from "@/hooks/use-shadowscout";
 import { getWebApp } from "@/lib/telegram";
 
 const ICONS: Record<Tab, typeof Ticket> = { bets: Ticket, live: Radio, bank: Wallet, stats: BarChart3, settings: Settings };
@@ -19,35 +22,32 @@ const LABELS: Record<Tab, string> = { bets: "Ставки", live: "Live", bank: 
 
 function AppBar() {
   const { state, dispatch } = useGame();
-  const [turns, setTurns] = useState(0);
+  const { data: bank } = useBankroll();
+  const { data: wallet, isError: walletDown } = useWallet();
   const bump = useAnimationControls();
-  const lastBudget = useRef(state.budget);
+  // The real balance once a wallet is connected, otherwise the no-money bank.
+  const realBalance = wallet?.connected ? wallet.total : undefined;
+  const capital = wallet?.connected ? wallet.total ?? undefined : bank?.capital;
+  const lastCapital = useRef(capital);
   useEffect(() => {
-    if (lastBudget.current === state.budget) return;
-    lastBudget.current = state.budget;
-    void bump.start({ scale: [1, 1.14, 1], transition: { duration: M.dur.slow } });
-  }, [state.budget, bump]);
+    if (lastCapital.current === capital) return;
+    if (lastCapital.current !== undefined) void bump.start({ scale: [1, 1.14, 1], transition: { duration: M.dur.slow } });
+    lastCapital.current = capital;
+  }, [capital, bump]);
+  // The red card plays once, on the moment the bank's protection actually trips.
+  const stopped = bank?.stopped;
+  const wasStopped = useRef(stopped);
+  useEffect(() => {
+    if (stopped && wasStopped.current === false) dispatch({ type: "STOP_DEMO" });
+    wasStopped.current = stopped;
+  }, [stopped, dispatch]);
   return (
     <header className="pn-appbar">
       <h1>{LABELS[state.tab]}</h1>
-      <span className="pn-demo">Демо</span>
-      {state.tab === "bets" && (
-        <motion.button
-          className="pn-icon"
-          aria-label="Обновить прогнозы"
-          animate={{ rotate: turns * 360 }}
-          transition={M.spring.gentle}
-          onClick={() => {
-            setTurns((n) => n + 1);
-            dispatch({ type: "REFRESH" });
-          }}
-        >
-          <RefreshCw size={19} aria-hidden="true" />
-        </motion.button>
-      )}
+      <span className="pn-demo">Без денег</span>
       <motion.button className="pn-bankpill" animate={bump} aria-label="Открыть банк" onClick={() => dispatch({ type: "TAB", tab: "bank" })}>
         <Wallet size={15} color="var(--tx2)" aria-hidden="true" />
-        {state.budget ? <Odometer value={state.budget} /> : <span className="pn-small">Задать</span>}
+        {capital !== undefined ? <Odometer value={Math.round(capital)} /> : <span className="pn-small">{walletDown || (wallet?.connected && realBalance === null) ? "нет данных" : "Задать"}</span>}
       </motion.button>
     </header>
   );
@@ -81,7 +81,7 @@ function LiveStrip() {
 function Dock() {
   const { state, dispatch } = useGame();
   const index = TABS.indexOf(state.tab);
-  const liveCount = state.bets.length;
+  const liveCount = useOpenPicks().data?.length ?? 0;
   return (
     <nav className="pn-dock" aria-label="Разделы">
       {/* The one bit of fun in the chrome: a ball rolls to the active tab. */}
@@ -291,6 +291,7 @@ const NO_GESTURE = ".pn-chips, .pn-keepy, .pn-chart, input, select";
 function useGestures(scroller: RefObject<HTMLDivElement | null>, pull: MotionValue<number>, swipe: MotionValue<number>) {
   const { state, dispatch } = useGame();
   const { tab } = state;
+  const qc = useQueryClient();
 
   useEffect(() => {
     const el = scroller.current;
@@ -324,7 +325,10 @@ function useGestures(scroller: RefObject<HTMLDivElement | null>, pull: MotionVal
         const next = TABS[TABS.indexOf(tab) + (dx < 0 ? 1 : -1)];
         if (next) dispatch({ type: "TAB", tab: next });
       }
-      if (pull.get() >= PULL_REFRESH) dispatch({ type: "REFRESH" });
+      if (pull.get() >= PULL_REFRESH) {
+        dispatch({ type: "REFRESH" });
+        void qc.invalidateQueries();
+      }
       if (pull.get() > 0) animate(pull, 0, M.spring.snappy);
       if (swipe.get() !== 0) animate(swipe, 0, M.spring.snappy);
       start = null;
@@ -351,7 +355,7 @@ function useGestures(scroller: RefObject<HTMLDivElement | null>, pull: MotionVal
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [scroller, pull, swipe, tab, dispatch]);
+  }, [scroller, pull, swipe, tab, dispatch, qc]);
 }
 
 /** The ball rolls down with the pull and keeps bouncing while new picks load. */
@@ -470,12 +474,6 @@ function useTelegramChrome(theme: "light" | "dark") {
     tg.setBackgroundColor(color);
   }, [real, tg, theme]);
 
-  // A bot message can link straight to a pick: t.me/<bot>/app?startapp=pick_1
-  const startParam = real ? tg?.initDataUnsafe.start_param : undefined;
-  useEffect(() => {
-    const id = Number(startParam?.match(/^pick_(\d+)$/)?.[1]);
-    if (id) dispatch({ type: "SHEET", sheet: { kind: "pick", pickId: id } });
-  }, [startParam, dispatch]);
 }
 
 function Shell() {
@@ -528,6 +526,7 @@ function Shell() {
           <Dock />
           <MomentLayer />
           <Toasts />
+          <GoalAlerts />
           <Sheets />
           <StopOverlay />
           <AnimatePresence>{state.stories && <WeekStories key="stories" />}</AnimatePresence>

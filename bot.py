@@ -22,7 +22,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 import bookmakers
 import browser_session
 import storage
-from analysis import analyze_match, check_late_news, check_result, scan_league
+from analysis import analyze_match, check_late_news, check_result, scan_league, settle_forecasts, settle_virtual_picks
 import connections
 from config import BOOKMAKER_ADAPTER, MINIAPP_URL, TELEGRAM_BOT_TOKEN
 
@@ -104,9 +104,16 @@ def _parse_match_args(raw: str) -> tuple[str, str, str | None] | None:
 
 
 async def _deliver_result(send, result: dict, league: str | None, *, full_text: bool):
+    if result.get("error"):
+        await send(f"{result['match']}: прогноз не получен. {result['error']}")
+        return
+
     if full_text:
         for chunk in _split_message(result["analysis_text"]):
             await send(chunk)
+        reasons = "\n".join(f"{d['market_label']}: {d['reason']}" for d in result.get("decisions", []))
+        if reasons:
+            await send(f"Решение кода:\n{reasons}")
 
     if not result["picks"]:
         if full_text:
@@ -150,7 +157,7 @@ async def _deliver_result(send, result: dict, league: str | None, *, full_text: 
                 summary += f" ⚠️ расхождение с оценкой LLM: {diff:+.0%}"
         if p.get("xg_probability") is not None:
             diff = p["model_probability"] - p["xg_probability"]
-            summary += f"\nxG-модель (Understat, независимая): {p['xg_probability']:.0%}"
+            summary += f"\nxG-модель (независимая): {p['xg_probability']:.0%}"
             if abs(diff) > POISSON_DIVERGENCE_FLAG:
                 summary += f" ⚠️ расхождение с оценкой LLM: {diff:+.0%}"
         summary += stake_note
@@ -168,6 +175,9 @@ async def _deliver_result(send, result: dict, league: str | None, *, full_text: 
             model_probability=p["model_probability"], poisson_probability=p.get("poisson_probability"),
             xg_probability=p.get("xg_probability"),
             price_verified=p["price_verified"], recommended_stake=recommended_stake,
+            line=p.get("line"), fair_probability=p.get("fair_probability"),
+            blended_probability=p.get("blended_probability"), provider=result.get("provider"),
+            prompt_version=result.get("prompt_version"),
         )
 
         buttons = None
@@ -228,7 +238,9 @@ async def league_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     with_value = [r for r in results if r["picks"]]
-    await update.message.reply_text(f"Проверил {len(results)} матчей, есть value: {len(with_value)}.")
+    failed = sum(1 for r in results if r.get("error"))
+    failed_note = f", не получилось разобрать: {failed}" if failed else ""
+    await update.message.reply_text(f"Проверил {len(results)} матчей, есть value: {len(with_value)}{failed_note}.")
     for result in with_value:
         await _deliver_result(_reply_sender(update), result, league, full_text=False)
     if not with_value:
@@ -412,8 +424,10 @@ async def settlement_job(context: ContextTypes.DEFAULT_TYPE):
     if not chat_id:
         return
     for pick in storage.picks_awaiting_settlement():
+        if pick["virtual"]:
+            continue  # settled by settle_virtual_picks, there's nothing to confirm
         try:
-            info = await asyncio.to_thread(check_result, pick["match"], pick["market"], pick["pick"])
+            info = await asyncio.to_thread(check_result, pick)
         except Exception:
             log.exception("check_result failed for pick %s", pick["id"])
             continue
@@ -438,7 +452,7 @@ async def result_tracking_job(context: ContextTypes.DEFAULT_TYPE):
     made, not just the ones the user chose to bet on (see storage.stats())."""
     for pick in storage.picks_awaiting_result_tracking():
         try:
-            info = await asyncio.to_thread(check_result, pick["match"], pick["market"], pick["pick"])
+            info = await asyncio.to_thread(check_result, pick)
         except Exception:
             log.exception("check_result failed for untracked pick %s", pick["id"])
             continue
@@ -446,6 +460,11 @@ async def result_tracking_job(context: ContextTypes.DEFAULT_TYPE):
         if not info.get("finished") or result not in ("win", "loss", "push"):
             continue
         storage.record_result(pick["id"], result)
+    try:
+        await asyncio.to_thread(settle_forecasts)
+        await asyncio.to_thread(settle_virtual_picks)
+    except Exception:
+        log.exception("settling forecasts failed")
 
 
 async def news_job(context: ContextTypes.DEFAULT_TYPE):

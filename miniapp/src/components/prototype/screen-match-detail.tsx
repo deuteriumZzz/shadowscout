@@ -1,0 +1,284 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeftRight, ExternalLink, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import type { EventKind, Lineup, MatchDetail as Detail, TableRow } from "./espn";
+import { ForecastSection } from "./screen-forecast";
+import { Ball, CardIcon, FormPips, M, RollDigit, Segmented } from "./fx";
+import type { LiveMatch } from "./polymarket";
+
+const LIVE_REFRESH_MS = 20_000;
+const IDLE_REFRESH_MS = 120_000;
+
+type View = "overview" | "events" | "stats" | "lineups";
+
+const KIND_LABEL: Record<EventKind, string> = { goal: "Гол", yellow: "Жёлтая карточка", red: "Красная карточка", sub: "Замена" };
+
+function EventIcon({ kind }: { kind: EventKind }) {
+  if (kind === "goal") return <Ball size={18} />;
+  if (kind === "yellow") return <CardIcon />;
+  if (kind === "red") return <CardIcon red />;
+  return <ArrowLeftRight size={15} color="var(--tx2)" aria-hidden="true" />;
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <p className="pn-small pn-muted" style={{ padding: "18px 4px", textAlign: "center" }}>{children}</p>;
+}
+
+function Events({ detail, match }: { detail: Detail; match: LiveMatch }) {
+  if (!detail.events.length) {
+    return <Empty>{detail.state === "pre" ? "Матч ещё не начался. События появятся здесь сами." : "Пока без событий."}</Empty>;
+  }
+  const team = (side: "home" | "away" | null) => (side ? match[side].name : "");
+  return (
+    <div className="pn-tl">
+      <AnimatePresence initial={false}>
+        {[...detail.events].reverse().map((e) => (
+          <motion.div key={`${e.minute}-${e.kind}-${e.player}`} className="pn-tl__item" layout initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={M.spring.snappy}>
+            <span className="pn-num pn-muted">{e.minute}</span>
+            <span className="pn-tl__icon"><EventIcon kind={e.kind} /></span>
+            <span>
+              {KIND_LABEL[e.kind]}: {e.player}
+              <small>
+                {team(e.side)}
+                {e.other ? `${team(e.side) ? " · " : ""}${e.kind === "sub" ? "уходит" : "пас"}: ${e.other}` : ""}
+              </small>
+            </span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Stats({ detail, match }: { detail: Detail; match: LiveMatch }) {
+  if (detail.state === "pre" || !detail.stats.length) return <Empty>Статистика появится после начала матча.</Empty>;
+  return (
+    <div className="pn-panel pn-panel--flat">
+      <div className="pn-row pn-small">
+        <b style={{ fontWeight: 600 }}>{match.home.name}</b>
+        <b style={{ fontWeight: 600 }}>{match.away.name}</b>
+      </div>
+      {detail.stats.map((s) => {
+        const total = s.home + s.away || 1;
+        return (
+          <div className="pn-stat" key={s.label}>
+            <div className="pn-row pn-small">
+              <b className="pn-num" style={{ fontSize: 16 }}>{s.home}</b>
+              <span className="pn-muted">{s.label}</span>
+              <b className="pn-num" style={{ fontSize: 16 }}>{s.away}</b>
+            </div>
+            <div className="pn-stat__bars" aria-hidden="true">
+              <div className="pn-stat__bar"><motion.span initial={{ scaleX: 0 }} animate={{ scaleX: s.home / total }} transition={M.spring.gentle} /></div>
+              <div className="pn-stat__bar pn-stat__bar--away"><motion.span initial={{ scaleX: 0 }} animate={{ scaleX: s.away / total }} transition={M.spring.gentle} /></div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Both teams on one pitch: home in the lower half attacking up, away mirrored. */
+function Pitch({ detail, match }: { detail: Detail; match: LiveMatch }) {
+  const { lineups } = detail;
+  if (!lineups) return <Empty>Составы появятся примерно за час до начала матча.</Empty>;
+  // The away team faces the other way, so its left is on the right of the screen.
+  const place = (lineup: Lineup, flip: boolean, color: string) =>
+    lineup.lines.flatMap((line, row) =>
+      line.map((player, i) => {
+        // Half the pitch per team, split evenly however many lines the formation has.
+        const y = 6 + (row * 40) / Math.max(1, lineup.lines.length - 1);
+        const x = ((i + 1) / (line.length + 1)) * 100;
+        return { ...player, color, x: flip ? x : 100 - x, y: flip ? 100 - y : y };
+      }),
+    );
+  const players = [
+    ...place(lineups.away, false, match.away.color ?? "#5b8def"),
+    ...place(lineups.home, true, match.home.color ?? "#22c55e"),
+  ];
+  return (
+    <div className="pn-stack">
+      <div className="pn-row pn-small pn-muted">
+        <span>{match.away.name}: {lineups.away.formation}</span>
+        <span>{match.home.name}: {lineups.home.formation}</span>
+      </div>
+      <div className="pn-pitch" role="img" aria-label="Расстановка команд на поле">
+        <svg viewBox="0 0 68 100" preserveAspectRatio="none" aria-hidden="true">
+          <g fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="0.4">
+            <rect x="2" y="2" width="64" height="96" />
+            <line x1="2" y1="50" x2="66" y2="50" />
+            <circle cx="34" cy="50" r="8" />
+            <rect x="16" y="2" width="36" height="13" />
+            <rect x="16" y="85" width="36" height="13" />
+          </g>
+        </svg>
+        {players.map((p, i) => (
+          <motion.div
+            key={`${p.name}${p.jersey}${i}`}
+            className="pn-player"
+            style={{ left: `${p.x}%`, top: `${p.y}%` }}
+            initial={{ opacity: 0, scale: 0.4 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ ...M.spring.bouncy, delay: i * 0.02 }}
+          >
+            <i className="pn-player__num" style={{ background: p.color }}>{p.jersey}</i>
+            {p.name}
+          </motion.div>
+        ))}
+      </div>
+      {[{ team: match.home, lineup: lineups.home }, { team: match.away, lineup: lineups.away }].map(({ team, lineup }) =>
+        lineup.subs.length ? (
+          <p className="pn-small pn-muted" key={team.name}>
+            <b style={{ fontWeight: 600 }}>Запас, {team.name}:</b> {lineup.subs.map((s) => s.name).join(", ")}
+          </p>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+function TableLine({ name, row }: { name: string; row: TableRow | null }) {
+  return (
+    <div className="pn-row pn-small">
+      <span>{name}</span>
+      <span className="pn-muted">{row ? `${row.rank} место, ${row.points} очк., ${row.played} игр` : "нет данных"}</span>
+    </div>
+  );
+}
+
+function Overview({ detail, match }: { detail: Detail; match: LiveMatch }) {
+  const hasForm = detail.form.home.length > 0 || detail.form.away.length > 0;
+  const hasTable = detail.table.home || detail.table.away;
+  return (
+    <div className="pn-stack" style={{ gap: 12 }}>
+      {hasForm && (
+        <section className="pn-panel pn-panel--flat">
+          <b style={{ fontWeight: 600 }}>Форма, последние матчи</b>
+          <div className="pn-row pn-small"><span>{match.home.name}</span><FormPips form={detail.form.home} /></div>
+          <div className="pn-row pn-small"><span>{match.away.name}</span><FormPips form={detail.form.away} /></div>
+        </section>
+      )}
+      {hasTable && (
+        <section className="pn-panel pn-panel--flat">
+          <b style={{ fontWeight: 600 }}>Положение в таблице</b>
+          <TableLine name={match.home.name} row={detail.table.home} />
+          <TableLine name={match.away.name} row={detail.table.away} />
+        </section>
+      )}
+      {!hasForm && !hasTable && <Empty>Данных об этом матче пока нет.</Empty>}
+    </div>
+  );
+}
+
+async function fetchDetail(id: string, code: string): Promise<Detail> {
+  const response = await fetch(`/prototype/match/${id}?code=${encodeURIComponent(code)}`);
+  if (!response.ok) throw new Error("Данные матча недоступны");
+  return response.json();
+}
+
+/** The real match centre: refreshes by itself, faster while the match is on. */
+export function MatchDetailScreen({ match, onClose, onBet }: { match: LiveMatch; onClose: () => void; onBet: () => void }) {
+  const espn = match.espn;
+  const [view, setView] = useState<View>("overview");
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: ["match-detail", espn?.id],
+    queryFn: () => fetchDetail(espn!.id, espn!.code),
+    enabled: !!espn,
+    refetchInterval: (query) => (query.state.data?.state === "in" ? LIVE_REFRESH_MS : IDLE_REFRESH_MS),
+    retry: 1,
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const phone = typeof document !== "undefined" ? document.querySelector(".pn-phone") : null;
+  if (!phone) return null;
+
+  const state = data?.state ?? espn?.state ?? "pre";
+  const homeScore = data?.homeScore ?? espn?.homeScore ?? 0;
+  const awayScore = data?.awayScore ?? espn?.awayScore ?? 0;
+  const clock = data?.clock ?? espn?.clock ?? "";
+  const when = new Date(match.start).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+
+  return createPortal(
+    <motion.div className="pn-detail" role="dialog" aria-modal="true" aria-label={`${match.home.name} против ${match.away.name}`} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={M.spring.sheet}>
+      <header className="pn-detail__head">
+        <span className="pn-small pn-muted" style={{ flex: 1 }}>{match.league}</span>
+        <button className="pn-icon" aria-label="Закрыть" onClick={onClose}><X size={22} aria-hidden="true" /></button>
+      </header>
+      <div className="pn-detail__body">
+        <section className="pn-board" aria-label={state === "pre" ? `Начало ${when}` : `Счёт ${homeScore}:${awayScore}`}>
+          {[match.home, match.away].map((team, i) => (
+            <div className="pn-board__team" key={team.name} style={{ gridColumn: i ? 3 : 1, gridRow: 1 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- remote logo from the data feed */}
+              <img src={team.logo} alt="" width={54} height={54} style={{ objectFit: "contain" }} />
+              {team.name}
+            </div>
+          ))}
+          <div className="pn-board__mid" style={{ gridColumn: 2, gridRow: 1 }}>
+            {state === "pre" ? (
+              <span className="pn-small pn-muted" style={{ textAlign: "center", marginTop: 8 }}>{when}</span>
+            ) : (
+              <>
+                <span className="pn-board__min">
+                  {state === "in" && <i className="pn-live" aria-hidden="true" />}
+                  {state === "post" ? "Финал" : clock}
+                </span>
+                <div className="pn-board__score">
+                  <RollDigit value={homeScore} />
+                  <span aria-hidden="true">:</span>
+                  <RollDigit value={awayScore} />
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+
+        {match.options.length > 0 && state === "pre" && <ForecastSection home={match.home.name} away={match.away.name} league={match.league} />}
+
+        {!espn ? (
+          <Empty>Для этого матча нет подробных данных: мы не смогли надёжно найти его в источнике статистики.</Empty>
+        ) : isPending ? (
+          <div className="pn-skeleton" style={{ height: 220 }} aria-busy="true" />
+        ) : isError && !data ? (
+          <section className="pn-notice" role="status">
+            <p className="pn-small pn-muted">Данные матча сейчас недоступны.</p>
+            <button className="pn-btn pn-btn--ghost" onClick={() => refetch()}>Повторить</button>
+          </section>
+        ) : data ? (
+          <>
+            <Segmented<View>
+              label="Раздел матча"
+              value={view}
+              onChange={setView}
+              options={[{ id: "overview", label: "Обзор" }, { id: "events", label: "События" }, { id: "stats", label: "Статистика" }, { id: "lineups", label: "Составы" }]}
+            />
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={view} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: M.dur.fast }}>
+                {view === "overview" && <Overview detail={data} match={match} />}
+                {view === "events" && <Events detail={data} match={match} />}
+                {view === "stats" && <Stats detail={data} match={match} />}
+                {view === "lineups" && <Pitch detail={data} match={match} />}
+              </motion.div>
+            </AnimatePresence>
+          </>
+        ) : null}
+      </div>
+      {match.options.length > 0 && state !== "post" && (
+        <div className="pn-detail__foot">
+          <motion.button className="pn-btn pn-btn--ghost" style={{ width: "100%" }} whileTap={{ scale: M.press }} onClick={onBet}>
+            <ExternalLink size={17} aria-hidden="true" /> Открыть на Polymarket
+          </motion.button>
+        </div>
+      )}
+    </motion.div>,
+    phone,
+  );
+}

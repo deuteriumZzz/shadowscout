@@ -19,6 +19,7 @@ import base64
 import hashlib
 import logging
 import os
+import secrets
 
 import requests
 from cryptography.fernet import Fernet, InvalidToken
@@ -37,8 +38,9 @@ CATALOG = {
     "openai": {"label": "Другая модель", "group": "llm", "env": None, "search": "duckduckgo", "hint": "OpenAI, OpenRouter, DeepSeek или своя: адрес API и название модели", "custom": True},
     "espn": {"label": "ESPN", "group": "football", "env": None, "keyless": True, "hint": "Live, события, составы, статистика. Без ключа, но API неофициальный"},
     "football_data": {"label": "football-data.org", "group": "football", "env": "FOOTBALL_DATA_TOKEN", "hint": "Бесплатно: 12 турниров, расписание и таблицы. Счёт с задержкой"},
-    "api_football": {"label": "API-Football", "group": "football", "env": "API_FOOTBALL_KEY", "hint": "Форма и личные встречи для прогноза. Бесплатно 100 запросов в день"},
-    "odds_api": {"label": "The Odds API", "group": "odds", "env": "ODDS_API_KEY", "hint": "Кэфы букмекеров: без них не считается перевес. Бесплатно 500 запросов в месяц"},
+    "striker": {"label": "StrikerAPI", "group": "football", "env": "STRIKERAPI_API_KEY", "hint": "xG для прогноза. Бесплатно: strikerapi.com, 500 кредитов в месяц, без карты"},
+    "api_football": {"label": "API-Football", "group": "football", "env": "API_FOOTBALL_KEY", "hint": "Необязательно: только для проверки на истории. Бесплатный ключ текущий сезон не отдаёт"},
+    "odds_api": {"label": "The Odds API", "group": "odds", "env": "ODDS_API_KEY", "hint": "Необязательно: цены и так идут с Polymarket. Кэфы букмекеров для сравнения"},
 }
 
 BOOKMAKER_SITES = ("1xbet", "fonbet", "bet365", "leon", "winline")
@@ -54,12 +56,38 @@ def _entry(name: str) -> dict:
     return CATALOG[name]
 
 
-def _fernet() -> Fernet | None:
+def _secret() -> str | None:
+    """From the environment if set, otherwise generated once and kept in a private
+    file beside the database, so pasting a key in the app needs no setup. Never in
+    the database itself: a copy of that alone must not reveal the keys. Losing the
+    file only means entering the keys again (see _decrypt)."""
     secret = os.environ.get(SECRET_ENV)
+    if secret:
+        return secret
+    path = f"{storage.DB_PATH}.secret"
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return f.read().strip() or None
+        except OSError:
+            return None
+    except OSError:
+        log.warning("can't create the key-encryption secret file")
+        return None
+    secret = secrets.token_urlsafe(32)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(secret)
+    return secret
+
+
+def _fernet() -> Fernet | None:
+    secret = _secret()
     if not secret:
         return None
     # ponytail: a plain hash is enough for a generated random secret, a human
-    # passphrase here would want a real KDF. .env.example says to generate it.
+    # passphrase here would want a real KDF.
     return Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()))
 
 
@@ -120,7 +148,7 @@ def save(name: str, key: str | None, base_url: str | None = None, model: str | N
         return
     fernet = _fernet()
     if not fernet:
-        raise SecretNotConfigured(f"Добавьте {SECRET_ENV} в .env, чтобы ключи можно было хранить зашифрованными")
+        raise SecretNotConfigured(f"Не удалось создать секрет шифрования. Проверьте права на папку базы или задайте {SECRET_ENV}, чтобы ключи можно было хранить зашифрованными")
     storage.set_setting(f"secret:{name}", fernet.encrypt(key.encode()).decode())
 
 
@@ -205,7 +233,7 @@ def set_bookmaker_site(site: str) -> None:
 
 
 def _probe(name: str, key: str | None, base_url: str | None) -> requests.Response:
-    """The cheapest request that proves a key works: none of these spend quota."""
+    """The cheapest request that proves a key works."""
     if name == "espn":
         return requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard", timeout=TIMEOUT)
     if name == "claude":
@@ -220,6 +248,9 @@ def _probe(name: str, key: str | None, base_url: str | None) -> requests.Respons
         return requests.get("https://api.football-data.org/v4/competitions", headers={"X-Auth-Token": key}, timeout=TIMEOUT)
     if name == "api_football":
         return requests.get("https://v3.football.api-sports.io/status", headers={"x-apisports-key": key}, timeout=TIMEOUT)
+    if name == "striker":
+        # The one probe that spends quota: 1 credit, there's no free endpoint to try.
+        return requests.post("https://mcp.strikerapi.com/v1/list_teams", json={}, headers={"x-api-key": key}, timeout=TIMEOUT)
     if name == "odds_api":
         return requests.get("https://api.the-odds-api.com/v4/sports", params={"apiKey": key}, timeout=TIMEOUT)
     raise ValueError(f"Неизвестное подключение: {name}")

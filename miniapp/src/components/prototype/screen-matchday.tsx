@@ -1,5 +1,7 @@
 "use client";
 
+import { errorText, ForecastsView } from "./screen-forecast";
+import { useBankroll, useSetBankroll } from "@/hooks/use-shadowscout";
 import { animate, AnimatePresence, motion, useMotionValueEvent, useScroll, useTransform } from "framer-motion";
 import { AlertTriangle, ArrowDown, ArrowUp, Bell, BellRing, Check, ChevronRight, ExternalLink, KeyRound, Minus, Plus, RefreshCw, ShieldQuestion, Star, Trash2, WifiOff, X } from "lucide-react";
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -25,6 +27,7 @@ import {
 import { CardIcon, Chip, Crest, FormPips, HelpButton, KeepyUppy, LeagueLogo, M, Odometer, RollDigit, ScrollCtx, Segmented, Sheet, useHold, useTeamColor } from "./fx";
 import { thud } from "./sound";
 import { Lineups } from "./screen-live";
+import { MarketsView } from "./screen-markets";
 import { blockReason, useGame, type Morph } from "./store";
 import { getWebApp, haptic, hapticResult } from "@/lib/telegram";
 
@@ -422,7 +425,31 @@ function LiveCard() {
   );
 }
 
+type FeedView = "matches" | "picks";
+
+/** Real matches first, then what the forecast made of them. */
 export function BetsScreen() {
+  // A bot message can link straight to the forecasts: t.me/<bot>/app?startapp=pick_1
+  const [view, setView] = useState<FeedView>(() => {
+    const tg = getWebApp() as unknown as { initDataUnsafe?: { start_param?: string } } | undefined;
+    return tg?.initDataUnsafe?.start_param?.startsWith("pick_") ? "picks" : "matches";
+  });
+  return (
+    <>
+      <div className="pn-feedbar">
+        <Segmented<FeedView>
+          label="Раздел ставок"
+          value={view}
+          onChange={setView}
+          options={[{ id: "matches", label: "Матчи" }, { id: "picks", label: "Прогнозы" }]}
+        />
+      </div>
+      {view === "matches" ? <MarketsView /> : <ForecastsView />}
+    </>
+  );
+}
+
+function PicksView() {
   const { state, dispatch } = useGame();
   const [league, setLeague] = useState("all");
   const [sort, setSort] = useState<Sort>("edge");
@@ -869,9 +896,11 @@ function HelpSheet({ topic }: { topic: keyof typeof HELP }) {
 }
 
 function BankSheet() {
-  const { state, dispatch } = useGame();
+  const { dispatch } = useGame();
   const close = () => dispatch({ type: "SHEET", sheet: null });
-  const [value, setValue] = useState(String(state.budget));
+  const { data: bank } = useBankroll();
+  const set = useSetBankroll();
+  const [value, setValue] = useState(bank ? String(Math.round(bank.capital)) : "");
   const [error, setError] = useState("");
 
   function save() {
@@ -880,7 +909,13 @@ function BankSheet() {
       setError("Введите сумму больше нуля");
       return;
     }
-    dispatch({ type: "SET_BUDGET", budget: Math.round(n) });
+    set.mutate(Math.round(n), {
+      onSuccess: () => {
+        close();
+        dispatch({ type: "TOAST", text: "Банк обновлён" });
+      },
+      onError: (e) => setError(errorText(e)),
+    });
   }
 
   return (

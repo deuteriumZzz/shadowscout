@@ -6,18 +6,15 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
-# Optional enrichers — bot works without them (Claude's own web search fills the
-# gap), but odds/stats from real APIs are more reliable than a search result.
-# API_FOOTBALL_KEY also gates poisson_model.py's goal-rate cross-check AND
-# xg_model.py's shot-quality (xG, via Understat) cross-check — the latter
-# only resolves team names through API-Football, Understat itself has no
-# search of its own.
+# Optional. Prices come from Polymarket and statistics from ESPN, neither needs
+# a key. API_FOOTBALL_KEY now only serves backtest.py; StrikerAPI's key for the
+# xG cross-check is read through connections.py.
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 
 # Which bookmakers.py adapter supplies market odds — swap platforms by
 # changing this one value, see bookmakers.py.
-BOOKMAKER_ADAPTER = os.environ.get("BOOKMAKER_ADAPTER", "the_odds_api")
+BOOKMAKER_ADAPTER = os.environ.get("BOOKMAKER_ADAPTER", "polymarket")
 
 # Which llm_providers.py adapter does the analysis — "claude" (default,
 # native web search, best quality), "groq" (free tier, weaker + needs

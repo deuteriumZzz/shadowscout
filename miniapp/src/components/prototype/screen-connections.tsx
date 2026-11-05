@@ -2,10 +2,12 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronRight, ExternalLink, Eye, EyeOff, X } from "lucide-react";
+import { Check, ChevronRight, Eye, EyeOff, X } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Chip, LeagueLogo, M, Sheet } from "./fx";
+import { errorText } from "./screen-forecast";
+import { WalletSettings } from "./screen-wallet";
 import { rememberOnboarded, useGame } from "./store";
 import { api } from "@/lib/api";
 
@@ -30,58 +32,24 @@ interface State {
   fallbacks: string[];
   bookmaker: { site: string; sites: string[] };
   can_store: boolean;
-  demo: boolean;
 }
 
-const row = (name: string, label: string, group: Item["group"], hint: string, extra: Partial<Item> = {}): Item => ({
-  name, label, group, hint, source: "none", connected: false, masked: null, search: null, custom: false, model: null, base_url: null, needs_reentry: false, ...extra,
-});
+const NOTHING: State = { items: [], primary: "", fallbacks: [], bookmaker: { site: "", sites: [] }, can_store: false };
 
-// Mirrors connections.py's CATALOG, used only when no backend answers.
-const DEMO: State = {
-  demo: true,
-  can_store: true,
-  primary: "claude",
-  fallbacks: [],
-  bookmaker: { site: "fonbet", sites: ["fonbet", "winline", "leon", "1xbet", "bet365"] },
-  items: [
-    row("claude", "Claude", "llm", "console.anthropic.com", { search: "native" }),
-    row("gemini", "Gemini", "llm", "aistudio.google.com, есть бесплатный тариф", { search: "native" }),
-    row("groq", "Groq", "llm", "console.groq.com, есть бесплатный тариф", { search: "duckduckgo" }),
-    row("openai", "Другая модель", "llm", "OpenAI, OpenRouter, DeepSeek или своя: адрес API и название модели", { search: "duckduckgo", custom: true }),
-    row("espn", "ESPN", "football", "Live, события, составы, статистика. Без ключа, но API неофициальный", { source: "keyless", connected: true }),
-    row("football_data", "football-data.org", "football", "Бесплатно: 12 турниров, расписание и таблицы. Счёт с задержкой"),
-    row("api_football", "API-Football", "football", "Форма и личные встречи для прогноза. Бесплатно 100 запросов в день"),
-    row("odds_api", "The Odds API", "odds", "Кэфы букмекеров: без них не считается перевес. Бесплатно 500 запросов в месяц"),
-  ],
-};
+const fetchState = () => api.get<State>("/api/connections");
 
-const SITE_LABEL: Record<string, string> = { fonbet: "Fonbet", winline: "Winline", leon: "Leon", "1xbet": "1xBet", bet365: "bet365" };
-
-const fetchState = async (): Promise<State> => {
-  try {
-    return { ...(await api.get<Omit<State, "demo">>("/api/connections")), demo: false };
-  } catch {
-    return DEMO;
-  }
-};
-
-/** Real API when it answers, otherwise a local demo that never keeps a key anywhere. */
 function useConnections() {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["connections"], queryFn: fetchState, retry: false, staleTime: 30_000 });
-  const data = query.data ?? DEMO;
-  const put = (next: State) => qc.setQueryData(["connections"], next);
+  const data = query.data ?? NOTHING;
   const send = async (path: string, body?: unknown) => {
-    put({ ...(await api.post<Omit<State, "demo">>(path, body)), demo: false });
+    qc.setQueryData(["connections"], await api.post<State>(path, body));
   };
-  const patchItem = (name: string, change: Partial<Item>) =>
-    put({ ...data, items: data.items.map((i) => (i.name === name ? { ...i, ...change } : i)) });
-  return { data, loading: query.isPending, send, put, patchItem };
+  return { data, loading: query.isPending, isError: query.isError, error: query.error, send };
 }
 
 function ConnectionForm({ item, onDone }: { item: Item; onDone?: () => void }) {
-  const { data, send, patchItem } = useConnections();
+  const { data, send } = useConnections();
   const [key, setKey] = useState("");
   const [show, setShow] = useState(false);
   const [baseUrl, setBaseUrl] = useState(item.base_url ?? "");
@@ -94,11 +62,7 @@ function ConnectionForm({ item, onDone }: { item: Item; onDone?: () => void }) {
     setBusy("test");
     setResult(null);
     try {
-      if (data.demo) {
-        setResult({ ok: false, detail: "Демо: настоящая проверка работает с запущенным сервером" });
-      } else {
-        setResult(await api.post<{ ok: boolean; detail: string }>(`/api/connections/${item.name}/test`, body));
-      }
+      setResult(await api.post<{ ok: boolean; detail: string }>(`/api/connections/${item.name}/test`, body));
     } catch (e) {
       setResult({ ok: false, detail: e instanceof Error ? e.message : "Не удалось проверить" });
     }
@@ -116,12 +80,7 @@ function ConnectionForm({ item, onDone }: { item: Item; onDone?: () => void }) {
     }
     setBusy("save");
     try {
-      if (data.demo) {
-        // The demo keeps only the same masked tail a real save would show.
-        patchItem(item.name, { connected: true, source: "app", masked: key.length >= 12 ? `••••${key.slice(-4)}` : "••••", model: model || null, base_url: baseUrl || null });
-      } else {
-        await send(`/api/connections/${item.name}`, body);
-      }
+      await send(`/api/connections/${item.name}`, body);
       setKey("");
       onDone?.();
     } catch (e) {
@@ -165,18 +124,17 @@ function ConnectionForm({ item, onDone }: { item: Item; onDone?: () => void }) {
         <motion.button className="pn-btn pn-btn--line" whileTap={{ scale: M.press }} disabled={!!busy} onClick={test}>{busy === "test" ? "Проверяем…" : "Проверить"}</motion.button>
         <motion.button className="pn-btn pn-btn--primary" whileTap={{ scale: M.press }} disabled={!!busy} onClick={save}>{busy === "save" ? "Сохраняем…" : "Сохранить"}</motion.button>
       </div>
-      {!data.demo && !data.can_store && (
-        <p className="pn-flag">Сохранение выключено: на сервере нет SHADOWSCOUT_SECRET_KEY.</p>
+      {!data.can_store && (
+        <p className="pn-flag">Сохранение выключено: сервер не смог создать секрет шифрования.</p>
       )}
     </div>
   );
 }
 
 function ConnectionSheet({ item, onClose }: { item: Item; onClose: () => void }) {
-  const { data, send, patchItem } = useConnections();
+  const { send } = useConnections();
   async function remove() {
-    if (data.demo) patchItem(item.name, { connected: false, source: "none", masked: null });
-    else await send(`/api/connections/${item.name}/delete`);
+    await send(`/api/connections/${item.name}/delete`);
     onClose();
   }
   return (
@@ -207,7 +165,7 @@ function ConnectionRow({ item, onOpen }: { item: Item; onOpen: () => void }) {
 }
 
 function ModelChain() {
-  const { data, send, put } = useConnections();
+  const { data, send } = useConnections();
   const llms = data.items.filter((i) => i.group === "llm" && i.connected);
   const primary = data.items.find((i) => i.name === data.primary);
   const [error, setError] = useState("");
@@ -215,8 +173,7 @@ function ModelChain() {
   async function change(next: string, fallbacks: string[]) {
     setError("");
     try {
-      if (data.demo) put({ ...data, primary: next, fallbacks });
-      else await send("/api/connections/llm", { primary: next, fallbacks });
+      await send("/api/connections/llm", { primary: next, fallbacks });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сменить модель");
     }
@@ -247,58 +204,17 @@ function ModelChain() {
   );
 }
 
-function BookmakerPanel() {
-  const { dispatch } = useGame();
-  const { data, send, put } = useConnections();
-  const [note, setNote] = useState("");
-
-  async function choose(site: string) {
-    dispatch({ type: "SET_PREF", prefs: { bookmaker: site } });
-    if (data.demo) put({ ...data, bookmaker: { ...data.bookmaker, site } });
-    else await send("/api/connections/bookmaker", { site });
-  }
-
-  async function open() {
-    setNote("");
-    if (data.demo) {
-      setNote("Демо: с запущенным сервером здесь откроется Chrome на сайте букмекера.");
-      return;
-    }
-    try {
-      await api.post("/api/connections/bookmaker/open");
-      setNote("Chrome открыт. Войдите на сайте, браузер запомнит вход.");
-    } catch (e) {
-      setNote(e instanceof Error ? e.message : "Не удалось открыть браузер");
-    }
-  }
-
-  return (
-    <section className="pn-panel pn-panel--flat">
-      <h2 className="pn-h2">Аккаунт букмекера</h2>
-      <div className="pn-chips pn-chips--wrap">
-        {data.bookmaker.sites.map((site) => (
-          <Chip key={site} active={data.bookmaker.site === site} onClick={() => choose(site)}>{SITE_LABEL[site] ?? site}</Chip>
-        ))}
-      </div>
-      <motion.button className="pn-btn pn-btn--ghost" whileTap={{ scale: M.press }} onClick={open}>
-        <ExternalLink size={16} aria-hidden="true" /> Открыть сайт и войти
-      </motion.button>
-      {note && <p className="pn-small pn-muted" role="status">{note}</p>}
-      <p className="pn-small pn-muted">Вход делаете вы сами в своём браузере, он запоминает сессию. Пароль приложение не видит и не хранит, а ставку подтверждаете только вы.</p>
-    </section>
-  );
-}
-
 export function ConnectionsSection() {
-  const { data } = useConnections();
+  const { data, isError, error } = useConnections();
   const [openName, setOpenName] = useState<string | null>(null);
   const open = data.items.find((i) => i.name === openName);
   const group = (g: Item["group"]) => data.items.filter((i) => i.group === g);
   const phone = typeof document !== "undefined" ? document.querySelector(".pn-phone") : null;
 
+  if (isError) return <p className="pn-stop-note" data-tone="warn">{errorText(error)} Подключения недоступны, ключи не сохранятся.</p>;
+
   return (
     <>
-      {data.demo && <p className="pn-stop-note" data-tone="warn">Сервер недоступен: это демо, ключи никуда не сохраняются.</p>}
       <section className="pn-panel pn-panel--flat">
         <h2 className="pn-h2">Модель для прогнозов</h2>
         {group("llm").map((i) => <ConnectionRow key={i.name} item={i} onOpen={() => setOpenName(i.name)} />)}
@@ -308,7 +224,6 @@ export function ConnectionsSection() {
         <h2 className="pn-h2">Футбольные данные и кэфы</h2>
         {[...group("football"), ...group("odds")].map((i) => <ConnectionRow key={i.name} item={i} onOpen={() => setOpenName(i.name)} />)}
       </section>
-      <BookmakerPanel />
       {phone && createPortal(
         <AnimatePresence>{open && <ConnectionSheet key={open.name} item={open} onClose={() => setOpenName(null)} />}</AnimatePresence>,
         phone,
@@ -317,7 +232,7 @@ export function ConnectionsSection() {
   );
 }
 
-const STEPS = ["Модель", "Данные", "Банк", "Лиги"];
+const STEPS = ["Модель", "Данные", "Деньги", "Лиги"];
 const WIZARD_LEAGUES = ["Premier League", "La Liga", "Bundesliga", "Serie A"];
 
 /** First run: without a model the app has nothing to show, so setup comes first. */
@@ -326,11 +241,12 @@ export function Onboarding() {
   const { data } = useConnections();
   const [step, setStep] = useState(0);
   const [provider, setProvider] = useState("gemini");
-  const [bank, setBank] = useState(String(state.budget));
+  const qc = useQueryClient();
+  const [bank, setBank] = useState("1000");
   const [bankError, setBankError] = useState("");
   const item = (name: string) => data.items.find((i) => i.name === name);
   const llm = item(provider);
-  const odds = item("odds_api");
+  const striker = item("striker");
 
   function finish() {
     rememberOnboarded();
@@ -344,7 +260,8 @@ export function Onboarding() {
         setBankError("Введите сумму больше нуля");
         return;
       }
-      if (n !== state.budget) dispatch({ type: "SET_BUDGET", budget: Math.round(n) });
+      // If the server isn't up yet, the Bank tab simply asks for the amount again.
+      api.post("/api/bankroll", { capital: Math.round(n) }).then(() => qc.invalidateQueries({ queryKey: ["bankroll"] }), () => undefined);
     }
     if (step === STEPS.length - 1) finish();
     else setStep(step + 1);
@@ -378,14 +295,15 @@ export function Onboarding() {
             {step === 1 && (
               <>
                 <h1 className="pn-wizard__title">Футбольные данные</h1>
-                <p className="pn-muted">Live-матчи уже работают через ESPN без ключа. Кэфы нужны, чтобы считать перевес над рынком.</p>
-                {odds && <ConnectionForm item={odds} />}
+                <p className="pn-muted">Цены с Polymarket, счёт и форма с ESPN уже работают без ключей. StrikerAPI необязателен: он добавит в прогноз xG, бесплатно.</p>
+                {striker && <ConnectionForm item={striker} />}
               </>
             )}
             {step === 2 && (
               <>
-                <h1 className="pn-wizard__title">Ваш банк</h1>
-                <p className="pn-muted">От него считается размер ставки и стоп по просадке.</p>
+                <h1 className="pn-wizard__title">Деньги</h1>
+                <WalletSettings />
+                <p className="pn-muted">Условный банк для режима без денег: от него считаются размер ставки и стоп по просадке.</p>
                 <label className="pn-stack">
                   <span className="pn-small pn-muted">Сумма</span>
                   <input className="pn-input" inputMode="decimal" aria-invalid={!!bankError} value={bank} onChange={(e) => { setBank(e.target.value); setBankError(""); }} />
@@ -415,7 +333,7 @@ export function Onboarding() {
       </div>
       <div className="pn-wizard__foot">
         <motion.button className="pn-btn pn-btn--primary" whileTap={{ scale: M.press }} onClick={next}>{step === STEPS.length - 1 ? "Готово" : "Дальше"}</motion.button>
-        <button className="pn-btn pn-btn--text" onClick={finish}>Пропустить и посмотреть демо</button>
+        <button className="pn-btn pn-btn--text" onClick={finish}>Пропустить</button>
       </div>
     </motion.div>
   );

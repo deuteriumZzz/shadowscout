@@ -28,6 +28,8 @@ const LEAGUE_ID: Record<string, number> = {
   "La Liga": 140,
   Bundesliga: 78,
   "Serie A": 135,
+  "Ligue 1": 61,
+  "Champions League": 2,
 };
 
 const CDN = "https://media.api-sports.io/football";

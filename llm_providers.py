@@ -25,8 +25,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 SYSTEM_PROMPT = (
-    "You are a sharp, disciplined football betting analyst. You are honest about "
-    "uncertainty and would rather say 'skip' than force a pick with no real edge."
+    "You are a disciplined football analyst who estimates match outcome probabilities. "
+    "You are honest about uncertainty, you state only what you have a source for, and "
+    "you never give betting advice: deciding on a bet isn't your job."
 )
 
 
@@ -249,12 +250,15 @@ class FallbackProvider(AnalysisProvider):
         if not providers:
             raise ValueError("FallbackProvider needs at least one provider")
         self.providers = providers
+        self.last_used: str | None = None
 
     def _try_each(self, call_name: str, *args) -> str:
         last_exc: Exception | None = None
         for name, provider in self.providers:
             try:
-                return getattr(provider, call_name)(*args)
+                answer = getattr(provider, call_name)(*args)
+                self.last_used = name
+                return answer
             except Exception as exc:
                 if not _is_rate_limited(exc):
                     raise

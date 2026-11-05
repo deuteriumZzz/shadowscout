@@ -54,10 +54,19 @@ class ConnectionsTests(unittest.TestCase):
         self.assertEqual(self.item("groq")["source"], "app")
 
     def test_saving_is_refused_without_a_secret_rather_than_stored_plain(self):
-        del os.environ[connections.SECRET_ENV]
-        response = self.client.post("/api/connections/groq", json={"key": KEY})
+        with patch.object(connections, "_secret", return_value=None):
+            response = self.client.post("/api/connections/groq", json={"key": KEY})
         self.assertEqual(response.status_code, 503)
         self.assertIsNone(storage.get_setting("secret:groq"))
+
+    def test_a_secret_is_made_once_outside_the_database_with_no_setup(self):
+        del os.environ[connections.SECRET_ENV]
+        connections.save("groq", KEY)
+        self.assertEqual(connections.get_key("groq"), KEY)
+        path = f"{storage.DB_PATH}.secret"
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(connections._secret(), f.read())
 
     def test_app_key_overrides_env_and_delete_falls_back(self):
         with patch.dict(os.environ, {"GROQ_API_KEY": "from-env-key-0000"}):
