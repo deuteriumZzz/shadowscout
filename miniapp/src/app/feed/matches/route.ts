@@ -1,9 +1,10 @@
 import { ESPN_CODES, findGame, normalizeScoreboard, type EspnGame } from "@/lib/feeds/espn";
 import { normalizeEvent, PM_LEAGUES, STARTED_WINDOW_MS, type LiveMatch, type RawEvent } from "@/lib/feeds/polymarket";
+import { ttlCache } from "@/lib/feeds/ttl-cache";
 
 const GAMMA = "https://gamma-api.polymarket.com/events";
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports/soccer";
-const CACHE_SECONDS = 20;
+const CACHE_MS = 20_000;
 // ESPN takes one date per request and its days don't quite follow UTC, so ask from yesterday.
 const SCORE_DAYS = [-1, 0, 1, 2, 3];
 
@@ -17,7 +18,8 @@ async function leagueMatches(slug: string, label: string, now: number): Promise<
     ascending: "true",
     end_date_min: new Date(now - STARTED_WINDOW_MS).toISOString().slice(0, 19) + "Z",
   });
-  const response = await fetch(`${GAMMA}?${query}`, { next: { revalidate: CACHE_SECONDS } });
+  // About 10 MB per league, far over what Next's fetch cache accepts: only the finished list is kept.
+  const response = await fetch(`${GAMMA}?${query}`, { cache: "no-store" });
   if (!response.ok) throw new Error(`Polymarket answered ${response.status}`);
   const events = (await response.json()) as RawEvent[];
   return events.flatMap((e) => normalizeEvent(e, label, now) ?? []);
@@ -28,7 +30,7 @@ async function leagueGames(league: string, now: number): Promise<EspnGame[]> {
   const days = await Promise.allSettled(
     SCORE_DAYS.map(async (offset) => {
       const date = new Date(now + offset * 86_400_000).toISOString().slice(0, 10).replaceAll("-", "");
-      const response = await fetch(`${ESPN}/${code}/scoreboard?dates=${date}`, { next: { revalidate: CACHE_SECONDS } });
+      const response = await fetch(`${ESPN}/${code}/scoreboard?dates=${date}`, { cache: "no-store" });
       if (!response.ok) throw new Error(`ESPN answered ${response.status}`);
       return normalizeScoreboard(await response.json(), code, league);
     }),
@@ -62,13 +64,12 @@ const scoreOnly = (g: EspnGame): LiveMatch => ({
   espn: linkOf(g),
 });
 
-/** A thin server-side proxy: one cached call per league, however many screens are open. */
-export async function GET() {
+async function loadMatches() {
   const now = Date.now();
   const settled = await Promise.allSettled(PM_LEAGUES.map((l) => leagueMatches(l.slug, l.label, now)));
   const failed = settled.filter((s) => s.status === "rejected").length;
   if (failed === PM_LEAGUES.length) {
-    return Response.json({ error: "Polymarket недоступен" }, { status: 502 });
+    throw new Error("Polymarket недоступен");
   }
   const byId = new Map<string, LiveMatch>();
   for (const result of settled) {
@@ -89,5 +90,16 @@ export async function GET() {
   const live = (m: LiveMatch) => m.espn?.state === "in";
   const visible = matches.filter((m) => !finished(m));
   visible.sort((a, b) => Number(live(b)) - Number(live(a)) || Date.parse(a.start) - Date.parse(b.start));
-  return Response.json({ matches: visible, partial: failed > 0 || scoreResults.some((r) => r.status === "rejected") });
+  return { matches: visible, partial: failed > 0 || scoreResults.some((r) => r.status === "rejected") };
+}
+
+const cachedMatches = ttlCache(CACHE_MS, loadMatches);
+
+/** A thin server-side proxy: one load per 20 seconds, however many screens are open. */
+export async function GET() {
+  try {
+    return Response.json(await cachedMatches());
+  } catch {
+    return Response.json({ error: "Polymarket недоступен" }, { status: 502 });
+  }
 }

@@ -226,6 +226,12 @@ export function ForecastSection({ home, away, league }: { home: string; away: st
 }
 
 /** One line on a match card, so the list shows where a forecast already exists. */
+/** Which 1 / X / 2 tile the forecast backs, if it backs one. */
+export function advisedOption(forecasts: Forecast[] | undefined, match: string) {
+  const pick = forecasts?.find((f) => f.match === match)?.markets.h2h?.pick;
+  return pick === "home" ? "1" : pick === "draw" ? "x" : pick === "away" ? "2" : null;
+}
+
 export function forecastHint(forecasts: Forecast[] | undefined, match: string) {
   const forecast = forecasts?.find((f) => f.match === match);
   if (!forecast) return null;

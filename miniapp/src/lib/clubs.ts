@@ -29,4 +29,10 @@ const CDN = "https://media.api-sports.io/football";
 export const teamLogo = (team: string): string | null => (TEAM_ID[team] ? `${CDN}/teams/${TEAM_ID[team]}.png` : null);
 export const leagueLogo = (league: string) => `${CDN}/leagues/${LEAGUE_ID[league]}.png`;
 
+/** A club's colour from the feed, or null so nothing shows rather than a made-up colour. */
+export function clubColor(team?: { color?: string | null } | null): string | null {
+  const hex = team?.color?.replace(/^#/, "");
+  return hex && /^[0-9a-f]{3,8}$/i.test(hex) ? `#${hex}` : null;
+}
+
 export type FormResult = "win" | "draw" | "loss";

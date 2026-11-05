@@ -1,8 +1,9 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Confetti } from "@/ui/confetti";
 import { Ball } from "@/ui/football";
 import { M } from "@/ui/motion";
 import { pickName } from "@/lib/labels";
@@ -78,6 +79,7 @@ export function SettledMoments() {
   const qc = useQueryClient();
   const [queue, setQueue] = useState<Moment[]>([]);
   const amount = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
   const current = queue[0];
 
   useEffect(() => {
@@ -132,6 +134,8 @@ export function SettledMoments() {
 
   const value = current?.value ?? 0;
   return (
+    <>
+    {current?.tone === "win" && !state.calm && !reduceMotion && <Confetti key={current.id} />}
     <AnimatePresence>
       {current && (
         <motion.div
@@ -173,5 +177,6 @@ export function SettledMoments() {
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   );
 }

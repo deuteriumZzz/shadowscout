@@ -1,7 +1,63 @@
 // Self-check for reading the feeds. Run: npm run check
 import assert from "node:assert/strict";
-import { normalizeEvent, normalizePrices, oddsAfterFee, positionName } from "./polymarket.ts";
+import { clubColor } from "../clubs.ts";
+import { betStatus } from "../bet-status.ts";
+import { ttlCache } from "./ttl-cache.ts";
+import { matchOfTheDay, normalizeEvent, normalizePrices, oddsAfterFee, positionName } from "./polymarket.ts";
 import { findGame, minuteValue, normalizeScoreboard, normalizeSummary, sameTeam } from "./espn.ts";
+
+// The feed cache: one load while fresh and for callers at once, a new one after, failures not kept.
+let clock = 0;
+let loads = 0;
+let failNext = false;
+const cached = ttlCache(1000, async () => {
+  loads += 1;
+  if (failNext) throw new Error("down");
+  return loads;
+}, () => clock);
+assert.deepEqual(await Promise.all([cached(), cached()]), [1, 1], "callers at once share a load");
+assert.equal(await cached(), 1, "kept while fresh");
+clock = 999;
+assert.equal(await cached(), 1);
+clock = 1000;
+assert.equal(await cached(), 2, "loaded again once expired");
+clock = 2000;
+failNext = true;
+await assert.rejects(cached());
+failNext = false;
+assert.equal(await cached(), 4, "a failure isn't kept");
+
+// Match of the day: the biggest market on the next day with football, never a finished one.
+const fixture = (id, start, volume, state) => ({ id, start, volume, espn: state && { state } });
+assert.equal(matchOfTheDay([]), null);
+assert.equal(matchOfTheDay([fixture("done", "2026-11-06T15:00:00", 900, "post")]), null);
+assert.equal(
+  matchOfTheDay([
+    fixture("later-and-huge", "2026-11-07T15:00:00", 900),
+    fixture("small", "2026-11-06T15:00:00", 10),
+    fixture("big", "2026-11-06T19:00:00", 50),
+    fixture("done", "2026-11-06T12:00:00", 800, "post"),
+  ]).id,
+  "big",
+);
+
+// A bet at the current score: what it says, and when the goals are counted out.
+const h2h = (pick) => ({ market: "h2h", pick });
+const totals = (pick) => ({ market: "totals", pick, line: 2.5 });
+assert.equal(betStatus(h2h("home"), 1, 0).tone, "good");
+assert.equal(betStatus(h2h("away"), 1, 0).tone, "bad");
+assert.equal(betStatus(h2h("home"), 1, 1).label, "Пока ничья");
+assert.equal(betStatus(h2h("draw"), 1, 1).tone, "good");
+assert.deepEqual(betStatus(totals("over"), 1, 0).goals, { total: 1, need: 3 });
+assert.equal(betStatus(totals("over"), 2, 1).label, "Зашла");
+assert.equal(betStatus(totals("under"), 1, 1).tone, "good");
+assert.equal(betStatus(totals("under"), 2, 1).label, "Не зашла");
+
+// Club colours: the feed's value with or without a #, and no colour rather than a broken one.
+assert.equal(clubColor({ color: "#195cb3" }), "#195cb3");
+assert.equal(clubColor({ color: "195cb3" }), "#195cb3");
+assert.equal(clubColor({ color: null }), null);
+assert.equal(clubColor({ color: "red;background:url(x)" }), null);
 
 // Polymarket: a real-shaped event maps to 1 / X / 2 with odds after the fee.
 const fee = { feesEnabled: true, feeSchedule: { rate: 0.05 } };

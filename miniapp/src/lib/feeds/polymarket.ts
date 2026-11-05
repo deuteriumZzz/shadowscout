@@ -59,6 +59,15 @@ export interface LiveMatch {
   options: LiveOption[];
 }
 
+/** The biggest market on the next day with football. A finished match can't be it. */
+export function matchOfTheDay(matches: LiveMatch[]): LiveMatch | null {
+  const dayOf = (m: LiveMatch) => new Date(m.start).setHours(0, 0, 0, 0);
+  const open = matches.filter((m) => m.espn?.state !== "post");
+  if (!open.length) return null;
+  const firstDay = Math.min(...open.map(dayOf));
+  return open.filter((m) => dayOf(m) === firstDay).reduce((best, m) => (m.volume > best.volume ? m : best));
+}
+
 interface RawTeam {
   name?: string;
   logo?: string;

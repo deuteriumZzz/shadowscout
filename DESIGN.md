@@ -56,7 +56,8 @@ confirming, warning for VAR and red cards.
 ## Football language
 
 Stays: red card for a stop, yellow card icon for a caution, the rolling ball in the
-dock, keepy-uppy on an empty feed.
+dock, keepy-uppy on an empty feed, the "Матч дня" poster in club colours, confetti
+when a bet wins at the final whistle.
 
 Excluded: levels, XP, streaks and login rewards, anything that celebrates placing a
 bet, any nudge to bet more or to chase a loss.

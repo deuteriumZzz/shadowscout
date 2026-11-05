@@ -7,7 +7,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EventKind, Lineup, MatchDetail as Detail, TableRow } from "@/lib/feeds/espn";
 import { ForecastSection } from "@/features/forecast/forecast";
-import { Ball, CardIcon, FormPips } from "@/ui/football";
+import { clubColor } from "@/lib/clubs";
+import { Ball, CardIcon, ClubTints, FormPips, teamNameSize } from "@/ui/football";
 import { flyIn, flyOut, M, type Morph } from "@/ui/motion";
 import { RollDigit } from "@/ui/numbers";
 import { Segmented } from "@/ui/controls";
@@ -112,8 +113,8 @@ function Pitch({ detail, match }: { detail: Detail; match: LiveMatch }) {
       }),
     );
   const players = [
-    ...place(lineups.away, false, match.away.color ?? "#5b8def"),
-    ...place(lineups.home, true, match.home.color ?? "#22c55e"),
+    ...place(lineups.away, false, clubColor(match.away) ?? "#5b8def"),
+    ...place(lineups.home, true, clubColor(match.home) ?? "#22c55e"),
   ];
   return (
     <div className="pn-stack">
@@ -263,8 +264,9 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
       </header>
       <div className="pn-detail__body" ref={body}>
         <motion.section ref={board} className="pn-board" style={{ scale: boardScale, opacity: boardOpacity }} aria-label={state === "pre" ? `Начало ${when}` : `Счёт ${homeScore}:${awayScore}`}>
+          <ClubTints home={match.home} away={match.away} />
           {[match.home, match.away].map((team, i) => (
-            <div className="pn-board__team" key={team.name} style={{ gridColumn: i ? 3 : 1, gridRow: 1, fontSize: team.name.split(" ").some((word) => word.length > 12) ? 12 : undefined }}>
+            <div className="pn-board__team" key={team.name} style={{ gridColumn: i ? 3 : 1, gridRow: 1, fontSize: teamNameSize(team.name) }}>
               {/* eslint-disable-next-line @next/next/no-img-element -- remote logo from the data feed */}
               <img src={team.logo} alt="" width={54} height={54} style={{ objectFit: "contain" }} data-morph-to={i ? "away" : "home"} />
               {team.name}

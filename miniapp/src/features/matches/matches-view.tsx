@@ -4,12 +4,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import { RefreshCw, ShieldQuestion } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { LeagueForecast } from "@/features/forecast/league-forecast";
-import type { LiveMatch } from "@/lib/feeds/polymarket";
+import { matchOfTheDay, type LiveMatch } from "@/lib/feeds/polymarket";
 import { useGame } from "@/store/app-store";
 import { Chip } from "@/ui/controls";
 import { LeagueLogo } from "@/ui/football";
 import { M } from "@/ui/motion";
 import { MatchCard } from "./match-card";
+import { MatchOfDay } from "./match-of-day";
 import { useMatches } from "./use-matches";
 
 const sentenceCase = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -82,9 +83,12 @@ export function MarketsView() {
 
   const age = Math.max(0, Math.round((now - dataUpdatedAt) / 1000));
   const stale = isError;
+  // A search is looking for something specific: the poster would only be in the way.
+  const poster = wanted ? null : matchOfTheDay(shown);
 
   return (
     <div className="pn-screen">
+      {poster && <MatchOfDay key={poster.id} match={poster} />}
       <div className="pn-chips" role="group" aria-label="Фильтр по лигам">
         <Chip active={league === "all"} onClick={() => setLeague("all")}>Все</Chip>
         {leagues.map((l) => (

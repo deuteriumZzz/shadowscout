@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useState } from "react";
-import { leagueLogo, teamLogo, type FormResult } from "@/lib/clubs";
+import { clubColor, leagueLogo, teamLogo, type FormResult } from "@/lib/clubs";
 import { M } from "@/ui/motion";
 
 /** Real club crest. Falls back to initials so a CDN hiccup can't break a card. */
@@ -60,3 +60,19 @@ export function FormPips({ form }: { form: FormResult[] }) {
     </span>
   );
 }
+
+type Club = { color?: string | null };
+
+/** Both clubs' colours split on a diagonal. A club without one leaves its side neutral. */
+export function ClubTints({ home, away }: { home: Club; away: Club }) {
+  const [homeColor, awayColor] = [clubColor(home), clubColor(away)];
+  return (
+    <>
+      {homeColor && <i className="pn-tint pn-tint--home" style={{ background: homeColor }} aria-hidden="true" />}
+      {awayColor && <i className="pn-tint pn-tint--away" style={{ background: awayColor }} aria-hidden="true" />}
+    </>
+  );
+}
+
+/** A long single word like Mönchengladbach only fits a narrow column at a smaller size. */
+export const teamNameSize = (name: string) => (name.split(" ").some((word) => word.length > 12) ? 12 : undefined);

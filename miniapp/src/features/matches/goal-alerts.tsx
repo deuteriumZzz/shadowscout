@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useOpenPicks } from "@/hooks/use-shadowscout";
+import { clubColor } from "@/lib/clubs";
 import type { MatchDetail } from "@/lib/feeds/espn";
 import type { LiveMatch } from "@/lib/feeds/polymarket";
 import { haptic } from "@/lib/telegram";
@@ -55,7 +56,7 @@ export function GoalAlerts() {
     return () => clearTimeout(t);
   }, [goal]);
 
-  const color = goal?.team.color ? (goal.team.color.startsWith("#") ? goal.team.color : `#${goal.team.color}`) : "var(--accent)";
+  const color = clubColor(goal?.team) ?? "var(--accent)";
   return (
     <AnimatePresence>
       {goal && (
