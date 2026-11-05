@@ -71,6 +71,12 @@ def _parse_json_block(text: str) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _prose(text: str) -> str:
+    """The analysis as people read it: no JSON block for the code, no Markdown marks."""
+    without_json = re.sub(r"```json\s*\{.*\}\s*```", "", text or "", flags=re.DOTALL)
+    return re.sub(r"^#+\s*", "", without_json, flags=re.MULTILINE).replace("**", "").strip()
+
+
 def build_prompt(home: str, away: str, league: str | None, totals_line: float, stats_text: str, news: list[dict]) -> str:
     """Takes no price on purpose: what the market thinks can't reach the model from here."""
     news_lines = "\n".join(
@@ -275,7 +281,7 @@ def analyze_match(team_a: str, team_b: str, league_hint: str | None = None) -> d
 
     result = {
         "league": league_hint, "match": f"{home} - {away}", "commence_time": commence_time,
-        "analysis_text": text, "key_factors": [], "facts": [], "facts_dropped": 0, "missing": [],
+        "analysis_text": _prose(text), "key_factors": [], "facts": [], "facts_dropped": 0, "missing": [],
         "picks": [], "decisions": [], "provider": provider_name, "prompt_version": PROMPT_VERSION,
         "url": event.get("url") if isinstance(event, dict) else None, "error": None,
         "home_logo": event.get("home_logo") if isinstance(event, dict) else None,
@@ -338,7 +344,7 @@ def analyze_match(team_a: str, team_b: str, league_hint: str | None = None) -> d
     result["forecast_id"] = storage.save_forecast(
         league_hint, result["match"], commence_time, provider_name, PROMPT_VERSION,
         {"markets": stored_markets, "facts": facts, "facts_dropped": result["facts_dropped"],
-         "missing": result["missing"], "analysis_text": text, "url": result["url"]},
+         "missing": result["missing"], "analysis_text": result["analysis_text"], "url": result["url"]},
     )
     return result
 

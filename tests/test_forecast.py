@@ -422,5 +422,14 @@ class XgTests(unittest.TestCase):
             self.assertIsNone(xg_model.match_probabilities("Arsenal", "Leeds", "EPL"), "no key")
 
 
+class ProseTests(unittest.TestCase):
+    def test_people_read_the_analysis_without_the_json_or_markdown(self):
+        text = '## Разбор\n\n**Хозяева** сильнее.\n\nЖдём два гола.\n```json\n{"markets": {"1X2": {"home": 0.5}}}\n```\n'
+        self.assertEqual(analysis._prose(text), "Разбор\n\nХозяева сильнее.\n\nЖдём два гола.")
+
+    def test_an_empty_answer_stays_empty(self):
+        self.assertEqual(analysis._prose(None), "")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ExternalLink, Sparkles, Wand2, X } from "lucide-react";
+import { ChevronRight, Check, ExternalLink, Sparkles, Wand2, X } from "lucide-react";
 import { useMutationState } from "@tanstack/react-query";
 import { useEffect, useState, type MouseEvent } from "react";
 import { Ball, LeagueLogo } from "@/ui/football";
@@ -93,6 +93,20 @@ function Facts({ forecast }: { forecast: Forecast }) {
   );
 }
 
+/** The model's own words on why, folded so the decision stays on top. */
+function Analysis({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <details className="pn-analysis">
+      <summary>
+        Разбор модели
+        <ChevronRight size={17} aria-hidden="true" />
+      </summary>
+      <p className="pn-small">{text}</p>
+    </details>
+  );
+}
+
 function PickActions({ pick, url }: { pick: Pick; url: string | null }) {
   const { state: { calm }, dispatch } = useGame();
   const accept = useAcceptPick();
@@ -159,6 +173,7 @@ function ForecastBody({ forecast, showLink = false }: { forecast: Forecast; show
           </motion.p>
         ))}
       </AnimatePresence>
+      <motion.div variants={revealItem}><Analysis text={forecast.analysis_text} /></motion.div>
       {Object.entries(forecast.markets).map(([key, market]) => (
         <motion.div key={key} variants={revealItem}><MarketRows forecast={forecast} marketKey={key} market={market} /></motion.div>
       ))}
