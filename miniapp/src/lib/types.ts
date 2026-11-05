@@ -33,6 +33,13 @@ export interface Pick {
   provider: string | null;
   virtual: 0 | 1;
   final_score: string | null;
+  home_logo: string | null;
+  away_logo: string | null;
+}
+
+export interface AlertSettings {
+  kickoff: boolean;
+  goals: boolean;
 }
 
 export interface ForecastMarket {

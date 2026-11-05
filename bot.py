@@ -24,6 +24,7 @@ import browser_session
 import storage
 from analysis import analyze_match, check_late_news, check_result, scan_league, settle_forecasts, settle_virtual_picks
 import connections
+import match_alerts
 from config import BOOKMAKER_ADAPTER, MINIAPP_URL, TELEGRAM_BOT_TOKEN
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,7 @@ log = logging.getLogger("shadowscout")
 
 TELEGRAM_MSG_LIMIT = 4000
 
+MATCH_ALERTS_INTERVAL = 60
 CLV_INTERVAL = 900         # capture closing odds every 15 min
 STEAM_INTERVAL = 1800       # check for pre-kickoff line movement every 30 min
 SETTLEMENT_INTERVAL = 1800  # look for finished matches every 30 min
@@ -178,6 +180,7 @@ async def _deliver_result(send, result: dict, league: str | None, *, full_text: 
             line=p.get("line"), fair_probability=p.get("fair_probability"),
             blended_probability=p.get("blended_probability"), provider=result.get("provider"),
             prompt_version=result.get("prompt_version"),
+            home_logo=result.get("home_logo"), away_logo=result.get("away_logo"),
         )
 
         buttons = None
@@ -467,6 +470,19 @@ async def result_tracking_job(context: ContextTypes.DEFAULT_TYPE):
         log.exception("settling forecasts failed")
 
 
+async def match_alerts_job(context: ContextTypes.DEFAULT_TYPE):
+    chat_id = storage.get_setting("chat_id")
+    if not chat_id:
+        return
+    try:
+        messages = await asyncio.to_thread(match_alerts.due_messages)
+    except Exception:
+        log.exception("match alerts failed")
+        return
+    for text in messages:
+        await context.bot.send_message(chat_id=chat_id, text=text)
+
+
 async def news_job(context: ContextTypes.DEFAULT_TYPE):
     chat_id = storage.get_setting("chat_id")
     if not chat_id:
@@ -524,6 +540,7 @@ def main():
     app.job_queue.run_repeating(settlement_job, interval=SETTLEMENT_INTERVAL, first=90)
     app.job_queue.run_repeating(result_tracking_job, interval=RESULT_TRACKING_INTERVAL, first=100)
     app.job_queue.run_repeating(news_job, interval=NEWS_INTERVAL, first=120)
+    app.job_queue.run_repeating(match_alerts_job, interval=MATCH_ALERTS_INTERVAL, first=30)
     app.job_queue.run_daily(digest_job, time=DIGEST_TIME, days=DIGEST_DAYS)
 
     app.run_polling()

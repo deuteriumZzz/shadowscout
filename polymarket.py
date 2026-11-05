@@ -99,6 +99,8 @@ def normalize_events(events: list[dict], now: datetime) -> list[dict]:
         matches.append({
             "home": _short(home["name"]),
             "away": _short(away["name"]),
+            "home_logo": home.get("logo"),
+            "away_logo": away.get("logo"),
             "start": start,
             "url": f"https://polymarket.com/event/{event['slug']}",
             "h2h": quotes,

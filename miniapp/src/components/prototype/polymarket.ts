@@ -95,6 +95,18 @@ export function oddsAfterFee(price: number, feeRate: number) {
 /** How long after kick-off a match stays listed: it's live, so it matters more, not less. */
 export const STARTED_WINDOW_MS = 3 * 3_600_000;
 
+/** Football positions in plain Russian. Anything else keeps Polymarket's own wording: guessing at it would be worse. */
+export function positionName(title: string, outcome: string | null): string {
+  const clean = (name: string) => name.replace(/\s+(FC|AFC|CF|SC)$/, "").replace(/^(FC|AFC)\s+/, "").trim();
+  const win = title.match(/^Will (.+?) win on \d{4}-\d{2}-\d{2}\?$/);
+  if (win && (outcome === "Yes" || outcome === "No")) return outcome === "Yes" ? `Победа ${clean(win[1])}` : `${clean(win[1])} не выиграет`;
+  const draw = title.match(/^Will (.+?) vs\.? (.+?) end in a draw\??$/);
+  if (draw && (outcome === "Yes" || outcome === "No")) return `${outcome === "Yes" ? "Ничья" : "Не ничья"}: ${clean(draw[1])} — ${clean(draw[2])}`;
+  const total = title.match(/^(.+?) vs\.? (.+?): O\/U ([\d.]+)$/);
+  if (total && (outcome === "Over" || outcome === "Under")) return `${outcome === "Over" ? "Больше" : "Меньше"} ${total[3]}: ${clean(total[1])} — ${clean(total[2])}`;
+  return outcome ? `${title}: ${outcome}` : title;
+}
+
 /** Polymarket sends the ids as a JSON string, with the "Yes" token first. */
 function firstToken(ids: string | undefined): string | undefined {
   try {

@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ExternalLink, Sparkles, Wand2, X } from "lucide-react";
 import { useMutationState } from "@tanstack/react-query";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { Ball, LeagueLogo, M } from "./fx";
 import { useGame } from "./store";
 import { useAcceptPick, useBankroll, useForecasts, useLimits, useMakeForecast, useSkipPick } from "@/hooks/use-shadowscout";
@@ -48,13 +48,14 @@ const revealItem = {
 
 /** Two thin bars under an outcome: what the model says against the market. The numbers sit beside them. */
 function OutcomeBars({ model, market }: { model?: number; market?: number }) {
+  if (model === undefined || market === undefined) return null;
+  const left = Math.min(model, market) * 100;
+  const width = Math.abs(model - market) * 100;
   return (
-    <span className="pn-obars" aria-hidden="true">
-      {[{ v: model, color: "var(--accent)" }, { v: market, color: "var(--away)" }].map(({ v, color }) =>
-        v === undefined ? null : (
-          <motion.i key={color} style={{ width: `${v * 100}%`, background: color }} initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ ...M.spring.gentle, delay: 0.15 }} />
-        ),
-      )}
+    <span className="pn-scale" aria-hidden="true">
+      <motion.span className="pn-scale__gap" style={{ left: `${left}%`, width: `${width}%`, background: model >= market ? "var(--accent)" : "var(--tx2)", opacity: 0.45 }} initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ ...M.spring.gentle, delay: 0.25 }} />
+      <motion.span className="pn-scale__dot" style={{ left: `${market * 100}%`, background: "var(--away)" }} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ ...M.spring.bouncy, delay: 0.12 }} />
+      <motion.span className="pn-scale__dot" style={{ left: `${model * 100}%`, background: "var(--accent)" }} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ ...M.spring.bouncy, delay: 0.18 }} />
     </span>
   );
 }
@@ -211,6 +212,71 @@ function ForecastWaiting() {
       </div>
       <p className="pn-small pn-muted" style={{ textAlign: "center" }}>Обычно это занимает пару минут. Экран можно закрыть: прогноз сохранится.</p>
     </div>
+  );
+}
+
+/** A league's forecasts, asked for one at a time. Kept outside the screen so leaving the tab doesn't lose the run. */
+type LeagueRun = { league: string; done: number; total: number; error: string | null; running: boolean };
+let leagueRun: LeagueRun | null = null;
+let stopRun = false;
+const runListeners = new Set<() => void>();
+const publishRun = (next: LeagueRun | null) => {
+  leagueRun = next;
+  runListeners.forEach((l) => l());
+};
+const subscribeRun = (l: () => void) => {
+  runListeners.add(l);
+  return () => void runListeners.delete(l);
+};
+
+export function LeagueForecast({ league, matches }: { league: string; matches: { home: string; away: string }[] }) {
+  const run = useSyncExternalStore(subscribeRun, () => leagueRun, () => null);
+  const { data: forecasts } = useForecasts();
+  const make = useMakeForecast();
+  const todo = matches.filter((m) => !forecasts?.some((f) => f.match === `${m.home} - ${m.away}`));
+  const mine = run?.league === league ? run : null;
+
+  async function start() {
+    stopRun = false;
+    let done = 0;
+    publishRun({ league, done, total: todo.length, error: null, running: true });
+    for (const m of todo) {
+      if (stopRun) break;
+      try {
+        await make.mutateAsync({ home: m.home, away: m.away, league });
+      } catch (e) {
+        publishRun({ league, done, total: todo.length, error: errorText(e), running: false });
+        return;
+      }
+      done += 1;
+      publishRun({ league, done, total: todo.length, error: null, running: true });
+    }
+    publishRun({ league, done, total: todo.length, error: null, running: false });
+  }
+
+  if (mine?.running) {
+    return (
+      <section className="pn-panel pn-panel--flat" role="status">
+        <div className="pn-row">
+          <b style={{ fontWeight: 600 }}>Прогнозы лиги: {mine.done} из {mine.total}</b>
+          <button className="pn-small" style={{ textDecoration: "underline" }} onClick={() => { stopRun = true; }}>Остановить</button>
+        </div>
+        <div className="pn-meter" role="progressbar" aria-label="Готово прогнозов" aria-valuenow={mine.done} aria-valuemin={0} aria-valuemax={mine.total}>
+          <motion.span style={{ background: "var(--accent)" }} initial={false} animate={{ scaleX: mine.total ? mine.done / mine.total : 0 }} transition={M.spring.gentle} />
+        </div>
+        <p className="pn-small pn-muted">Каждый матч считается отдельно, пара минут на матч. Можно перейти на другие вкладки.</p>
+      </section>
+    );
+  }
+  if (!todo.length && !mine?.error) return null;
+  return (
+    <section className="pn-panel pn-panel--flat">
+      <p className="pn-small pn-muted">Без прогноза матчей: {todo.length}. Каждый прогноз это отдельный запрос к модели.</p>
+      {mine?.error && <p className="pn-small" style={{ color: "var(--bad)" }} role="alert">Остановлено на {mine.done} из {mine.total}: {mine.error}</p>}
+      <motion.button className="pn-btn pn-btn--ghost" whileTap={{ scale: M.press }} disabled={run?.running} onClick={start}>
+        <Wand2 size={16} aria-hidden="true" /> {run?.running ? "Считается другая лига" : `Посчитать все: ${todo.length}`}
+      </motion.button>
+    </section>
   );
 }
 

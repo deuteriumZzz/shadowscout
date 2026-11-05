@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type {
+  AlertSettings,
   BacktestResult,
   BankrollStatus,
   DigestSettings,
@@ -96,6 +97,18 @@ export function useSkipPick() {
   return useMutation({
     mutationFn: (pickId: number) => api.post<Pick>(`/api/picks/${pickId}/skip`),
     onSuccess: (_data, pickId) => removeFromPending(qc, pickId),
+  });
+}
+
+export function useAlertSettings() {
+  return useQuery({ queryKey: ["settings", "alerts"], queryFn: () => api.get<AlertSettings>("/api/settings/alerts"), retry: false });
+}
+
+export function useSetAlertSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<AlertSettings>) => api.post<AlertSettings>("/api/settings/alerts", body),
+    onSuccess: (data) => qc.setQueryData(["settings", "alerts"], data),
   });
 }
 

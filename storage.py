@@ -114,6 +114,8 @@ def _migrate(conn):
         ("prompt_version", "TEXT"),
         ("virtual", "INTEGER NOT NULL DEFAULT 0"),
         ("final_score", "TEXT"),
+        ("home_logo", "TEXT"),
+        ("away_logo", "TEXT"),
     ):
         if column not in existing:
             conn.execute(f"ALTER TABLE picks ADD COLUMN {column} {decl}")
@@ -136,17 +138,19 @@ def save_pick(league: str, match: str, market: str, pick: str, odds: float | Non
               price_verified: bool = False, recommended_stake: float | None = None,
               line: float | None = None, fair_probability: float | None = None,
               blended_probability: float | None = None, provider: str | None = None,
-              prompt_version: str | None = None) -> int:
+              prompt_version: str | None = None, home_logo: str | None = None,
+              away_logo: str | None = None) -> int:
     with closing(_connect()) as conn, conn:
         cur = conn.execute(
             "INSERT INTO picks (created_at, league, match, market, pick, odds, confidence, "
             "reasoning, commence_time, model_probability, poisson_probability, xg_probability, "
             "price_verified, recommended_stake, line, fair_probability, blended_probability, "
-            "provider, prompt_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "provider, prompt_version, home_logo, away_logo) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (datetime.now(timezone.utc).isoformat(), league, match, market, pick, odds,
              confidence, reasoning, commence_time, model_probability, poisson_probability,
              xg_probability, int(price_verified), recommended_stake, line, fair_probability,
-             blended_probability, provider, prompt_version),
+             blended_probability, provider, prompt_version, home_logo, away_logo),
         )
         return cur.lastrowid
 

@@ -11,16 +11,19 @@ import { WalletPanel, WalletSettings } from "./screen-wallet";
 import { FeedNotice } from "./screen-matchday";
 import { useGame, type ThemeChoice } from "./store";
 import {
+  useAlertSettings,
   useBankroll,
   useDigestSettings,
   useEquityCurve,
   useForecastScores,
   useHistory,
   useLimits,
+  useSetAlertSettings,
   useSetDigestSettings,
   useSetLimits,
   useStats,
 } from "@/hooks/use-shadowscout";
+import { haptic } from "@/lib/telegram";
 import type { EquityPoint, Pick } from "@/lib/types";
 
 const money = (v: number) => Math.abs(Math.round(v)).toLocaleString("ru-RU");
@@ -73,8 +76,9 @@ function CapitalChart({ period, series }: { period: Period; series: number[] }) 
   function onPointer(e: React.PointerEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     const px = ((e.clientX - rect.left) / rect.width) * CHART.w;
-    const i = Math.round(((px - CHART.left) / (CHART.w - CHART.left - CHART.right)) * (series.length - 1));
-    setHover(Math.max(0, Math.min(series.length - 1, i)));
+    const i = Math.max(0, Math.min(series.length - 1, Math.round(((px - CHART.left) / (CHART.w - CHART.left - CHART.right)) * (series.length - 1))));
+    if (i !== hover && e.pointerType === "touch") haptic("light");
+    setHover(i);
   }
 
   return (
@@ -397,7 +401,7 @@ export function StatsScreen() {
                       <div style={{ minWidth: 0 }}>
                         {h.match.split(" - ").map((team, i) => (
                           <div className="pn-hist__team" key={team}>
-                            <Crest team={team} size={18} />
+                            <Crest team={team} size={18} logo={i ? h.away_logo : h.home_logo} />
                             <span>{team}</span>
                             {h.final_score && <b className="pn-num">{h.final_score.split("-")[i]}</b>}
                           </div>
@@ -421,6 +425,21 @@ export function StatsScreen() {
 }
 
 const ALL_LEAGUES = ["Premier League", "La Liga", "Bundesliga", "Serie A", "Ligue 1", "Champions League"];
+
+/** Real messages from the bot about matches you hold a bet on. The final always comes. */
+function Alerts() {
+  const { data, isError } = useAlertSettings();
+  const save = useSetAlertSettings();
+  if (isError || !data) return null;
+  return (
+    <section className="pn-panel pn-panel--flat">
+      <h2 className="pn-h2">Сообщения в Telegram</h2>
+      <Switch label="Начало матча со ставкой" on={data.kickoff} onToggle={() => save.mutate({ kickoff: !data.kickoff })} />
+      <Switch label="Голы в матчах со ставкой" on={data.goals} onToggle={() => save.mutate({ goals: !data.goals })} />
+      <p className="pn-small pn-muted">Финал приходит всегда. Сообщения отправляет бот, он должен быть запущен.</p>
+    </section>
+  );
+}
 
 function Digest() {
   const { data, isError } = useDigestSettings();
@@ -450,6 +469,7 @@ export function SettingsScreen() {
     <div className="pn-screen">
       <WalletSettings />
       <ConnectionsSection />
+      <Alerts />
       <Digest />
 
       <section className="pn-panel pn-panel--flat">

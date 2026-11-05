@@ -2,17 +2,19 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, RefreshCw, ShieldQuestion } from "lucide-react";
+import { ExternalLink, RefreshCw, ShieldQuestion, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chip, FormPips, LeagueLogo, M, RollDigit } from "./fx";
+import type { MatchDetail } from "./espn";
 import type { LiveMatch, LiveOption } from "./polymarket";
-import { forecastHint, pickName } from "./screen-forecast";
+import { forecastHint, LeagueForecast, pickName } from "./screen-forecast";
 import { useGame } from "./store";
 import { WalletPositions } from "./screen-wallet";
 import { useForecasts, useOpenPicks } from "@/hooks/use-shadowscout";
 import { getWebApp, haptic } from "@/lib/telegram";
 
 const REFRESH_MS = 30_000;
+const NEXT_SHOWN = 3;
 
 async function fetchMatches(): Promise<{ matches: LiveMatch[]; partial: boolean }> {
   const response = await fetch("/prototype/matches");
@@ -108,13 +110,18 @@ interface Goal {
   key: string;
   team: LiveMatch["home"];
   line: string;
+  scorer?: string;
+  mood?: string;
 }
+
+const foldName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 /** A real goal, on any tab: the same broadcast wipe as designed. Mounted once, for the whole app. */
 export function GoalAlerts() {
   const { data } = useMatches();
   const [goal, setGoal] = useState<Goal | null>(null);
   const seen = useRef(new Map<string, [number, number]>());
+  const { data: openPicks } = useOpenPicks();
   useEffect(() => {
     for (const m of data?.matches ?? []) {
       if (m.espn?.state !== "in") continue;
@@ -122,12 +129,23 @@ export function GoalAlerts() {
       const before = seen.current.get(m.id);
       if (before && (h > before[0] || a > before[1])) {
         haptic("medium");
+        const side = h > before[0] ? "home" : "away";
+        const key = `${m.id}-${h}-${a}`;
+        const bet = openPicks?.find((p) => p.match === `${m.home.name} - ${m.away.name}` && p.market === "h2h" && p.pick !== "draw");
         // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to new data from the feed
-        setGoal({ key: `${m.id}-${h}-${a}`, team: h > before[0] ? m.home : m.away, line: `${m.home.name} ${h}:${a} ${m.away.name}` });
+        setGoal({ key, team: m[side], line: `${m.home.name} ${h}:${a} ${m.away.name}`, mood: bet ? (bet.pick === side ? "В пользу вашей ставки" : "Против вашей ставки") : undefined });
+        // Who scored comes a moment later, and the panel is worth showing without waiting for it.
+        void fetch(`/prototype/match/${m.espn.id}?code=${encodeURIComponent(m.espn.code)}`)
+          .then((r) => (r.ok ? (r.json() as Promise<MatchDetail>) : null))
+          .then((detail) => {
+            const last = detail?.events.filter((e) => e.kind === "goal" && e.side === side).at(-1);
+            if (last) setGoal((g) => (g?.key === key ? { ...g, scorer: `${last.player}, ${last.minute}` } : g));
+          })
+          .catch(() => undefined);
       }
       seen.current.set(m.id, [h, a]);
     }
-  }, [data]);
+  }, [data, openPicks]);
   useEffect(() => {
     if (!goal) return;
     const t = setTimeout(() => setGoal(null), GOAL_MS);
@@ -157,7 +175,8 @@ export function GoalAlerts() {
           </motion.div>
           <div style={{ minWidth: 0 }}>
             <motion.div className="pn-moment__big" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ ...M.spring.snappy, delay: 0.2 }}>Гол!</motion.div>
-            <motion.div className="pn-moment__line" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ ...M.spring.snappy, delay: 0.28 }}>{goal.line}</motion.div>
+            <motion.div className="pn-moment__line" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ ...M.spring.snappy, delay: 0.28 }}>{goal.scorer ?? goal.line}</motion.div>
+            <motion.div className="pn-moment__sub" initial={{ opacity: 0 }} animate={{ opacity: 0.86 }} transition={{ delay: 0.42 }}>{goal.scorer ? goal.line : ""}{goal.scorer && goal.mood ? ". " : ""}{goal.mood}</motion.div>
           </div>
           <motion.div className="pn-moment__bar" initial={{ scaleX: 1 }} animate={{ scaleX: 0 }} transition={{ duration: GOAL_MS / 1000, ease: "linear" }} />
         </motion.div>
@@ -192,6 +211,24 @@ function OpenPicks({ matches }: { matches: LiveMatch[] }) {
   );
 }
 
+function FavouriteStar({ match }: { match: LiveMatch }) {
+  const { state, dispatch } = useGame();
+  const on = state.favorites.includes(match.home.name) || state.favorites.includes(match.away.name);
+  const toggle = () => {
+    haptic("light");
+    // Either club of the match counts: remove whichever is there, or add the home side.
+    const present = [match.home.name, match.away.name].filter((t) => state.favorites.includes(t));
+    (present.length ? present : [match.home.name]).forEach((team) => dispatch({ type: "TOGGLE_FAVORITE", team }));
+  };
+  return (
+    <motion.button className="pn-star" aria-pressed={on} aria-label={on ? `Убрать ${match.home.name} из избранного` : `Добавить ${match.home.name} в избранное`} whileTap={{ scale: 0.8 }} onClick={toggle}>
+      <motion.span key={String(on)} style={{ display: "grid" }} initial={{ scale: 0.6 }} animate={{ scale: 1 }} transition={M.spring.bouncy}>
+        <Star size={16} fill={on ? "currentColor" : "none"} aria-hidden="true" />
+      </motion.span>
+    </motion.button>
+  );
+}
+
 function MatchCard({ match, index }: { match: LiveMatch; index: number }) {
   const { dispatch } = useGame();
   const card = useRef<HTMLElement>(null);
@@ -212,12 +249,14 @@ function MatchCard({ match, index }: { match: LiveMatch; index: number }) {
       layout
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.97 }}
+      // Its own quick transition: filtering shouldn't wait on the delay cards use to come in.
+      exit={{ opacity: 0, scale: 0.97, transition: { duration: M.dur.fast / 2 } }}
       transition={{ ...M.spring.snappy, delay: Math.min(index, 6) * 0.04, layout: M.spring.snappy }}
     >
       <div className="pn-match__head">
         <LeagueLogo league={match.league} />
         <span>{match.league}</span>
+        <FavouriteStar match={match} />
         {live ? (
           <span className="pn-board__min" style={{ color: "var(--live)" }}><i className="pn-live" aria-hidden="true" /> {espn.clock}</span>
         ) : (
@@ -266,7 +305,9 @@ function MatchCard({ match, index }: { match: LiveMatch; index: number }) {
 /** Live football from Polymarket: real matches, real prices, refreshed in the background. */
 export function MarketsView() {
   const { data, isPending, isError, refetch, isFetching, dataUpdatedAt } = useMatches();
+  const { state: { favorites } } = useGame();
   const [league, setLeague] = useState("all");
+  const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 5000);
@@ -275,15 +316,25 @@ export function MarketsView() {
 
   const matches = useMemo(() => data?.matches ?? [], [data]);
   const leagues = useMemo(() => [...new Set(matches.map((m) => m.league))], [matches]);
-  const shown = matches.filter((m) => league === "all" || m.league === league);
+  const wanted = foldName(query.trim());
+  const shown = matches.filter(
+    (m) => (league === "all" || m.league === league) && (!wanted || foldName(`${m.home.name} ${m.away.name}`).includes(wanted)),
+  );
   const groups = useMemo(() => {
     const byDay = new Map<string, LiveMatch[]>();
     for (const m of shown) {
-      const key = m.espn?.state === "in" ? "Сейчас идут" : dayLabel(m.start, now);
+      const liked = favorites.includes(m.home.name) || favorites.includes(m.away.name);
+      const key = m.espn?.state === "in" ? "Сейчас идут" : liked ? "Избранное" : dayLabel(m.start, now);
       byDay.set(key, [...(byDay.get(key) ?? []), m]);
     }
-    return [...byDay.entries()];
-  }, [shown, now]);
+    // What's on now comes first, then your clubs, then the days in order.
+    const rank = (key: string) => (key === "Сейчас идут" ? 0 : key === "Избранное" ? 1 : 2);
+    return [...byDay.entries()].sort((a, b) => rank(a[0]) - rank(b[0]));
+  }, [shown, now, favorites]);
+  const leagueTodo = useMemo(
+    () => matches.filter((m) => m.league === league && m.options.length > 0 && m.espn?.state !== "in").map((m) => ({ home: m.home.name, away: m.away.name })),
+    [matches, league],
+  );
 
   if (isPending) {
     return (
@@ -318,6 +369,8 @@ export function MarketsView() {
           <Chip key={l} active={league === l} onClick={() => setLeague(l)}><LeagueLogo league={l} size={13} /> {l}</Chip>
         ))}
       </div>
+      <input className="pn-search" type="search" placeholder="Поиск команды" aria-label="Поиск команды" autoComplete="off" spellCheck={false} value={query} onChange={(e) => setQuery(e.target.value)} />
+      {league !== "all" && <LeagueForecast league={league} matches={leagueTodo} />}
       <div className="pn-row">
         <p className="pn-fresh" data-stale={stale} style={{ marginTop: 0 }}>
           {stale ? "Нет обновлений, цены могли устареть" : age < 10 ? "Цены только что обновлены" : `Цены обновлены ${age} с назад`}
@@ -338,8 +391,8 @@ export function MarketsView() {
 
       {!shown.length && (
         <section className="pn-notice" role="status">
-          <h2 className="pn-h2">Ближайших матчей нет</h2>
-          <p className="pn-small pn-muted">Рынки появятся ближе к следующему туру.</p>
+          <h2 className="pn-h2">{wanted ? "Таких матчей нет" : "Ближайших матчей нет"}</h2>
+          <p className="pn-small pn-muted">{wanted ? "Названия команд в ленте на английском: например, Arsenal или Bayern." : "Рынки появятся ближе к следующему туру."}</p>
         </section>
       )}
 
@@ -355,21 +408,23 @@ export function LiveNowSection() {
   const { data, isPending } = useMatches();
   const matches = useMemo(() => data?.matches ?? [], [data]);
   const live = matches.filter((m) => m.espn?.state === "in");
-  const next = matches.find((m) => m.espn?.state !== "in");
+  const upcoming = matches.filter((m) => m.espn?.state !== "in").slice(0, NEXT_SHOWN);
   if (isPending) return <div className="pn-skeleton" style={{ height: 90 }} aria-busy="true" />;
   return (
     <section className="pn-stack">
       <h2 className="pn-h2">Сейчас идут: {live.length}</h2>
-      {live.length === 0 && (
-        <p className="pn-small pn-muted">
-          Сейчас матчей нет.{next ? ` Ближайший: ${next.home.name} — ${next.away.name}, ${new Date(next.start).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.` : ""}
-        </p>
-      )}
+      {live.length === 0 && <p className="pn-small pn-muted">Сейчас матчей нет.</p>}
       <AnimatePresence initial={false} mode="popLayout">
         {live.map((m, i) => <MatchCard key={m.id} match={m} index={i} />)}
       </AnimatePresence>
       <WalletPositions matches={matches} />
       <OpenPicks matches={matches} />
+      {live.length === 0 && upcoming.length > 0 && (
+        <>
+          <h2 className="pn-h2">Ближайшие</h2>
+          {upcoming.map((m, i) => <MatchCard key={m.id} match={m} index={i} />)}
+        </>
+      )}
     </section>
   );
 }

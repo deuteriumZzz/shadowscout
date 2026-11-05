@@ -174,7 +174,7 @@ export type Action =
 
 const PREFS_KEY = "pn-prefs";
 
-type SavedPrefs = { theme?: ThemeChoice; calm?: boolean; currency?: string };
+type SavedPrefs = { theme?: ThemeChoice; calm?: boolean; currency?: string; favorites?: string[] };
 
 function readSaved(): SavedPrefs {
   try {
@@ -188,7 +188,7 @@ function initial(calm: boolean): GameState {
   const saved = readSaved();
   return {
     theme: saved.theme ?? "auto",
-    favorites: [],
+    favorites: saved.favorites ?? [],
     dailyLimit: 3000,
     lossToday: 0,
     pausedUntil: null,
@@ -466,14 +466,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [loading]);
 
-  const { theme, prefs: { currency } } = state;
+  const { theme, favorites, prefs: { currency } } = state;
   useEffect(() => {
     try {
-      localStorage.setItem(PREFS_KEY, JSON.stringify({ theme, calm, currency }));
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ theme, calm, currency, favorites }));
     } catch {
       // Private mode: settings last until the app closes.
     }
-  }, [theme, calm, currency]);
+  }, [theme, calm, currency, favorites]);
 
   // Match clock. Stands still while a moment is on screen.
   const clockRuns = sim.status === "playing" && !sim.moment;

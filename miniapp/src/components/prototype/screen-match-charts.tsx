@@ -7,6 +7,7 @@ import { minuteValue, type EventKind, type MatchDetail, type MatchEventRow } fro
 import { Ball, CardIcon, M } from "./fx";
 import type { LiveMatch, PricePoint } from "./polymarket";
 import { useGame } from "./store";
+import { haptic } from "@/lib/telegram";
 
 const REGULATION = 90;
 const CLOSE_MINUTES = 6; // nearer than this on one side, two marks would sit on top of each other
@@ -96,6 +97,7 @@ const PRE_MATCH_WINDOW = 3 * 24 * HOUR;
 const LIVE_REFRESH_MS = 30_000;
 const IDLE_REFRESH_MS = 300_000;
 const REACTION_SECONDS = 180;
+const BUZZ_GAP_MS = 120; // a minute-by-minute line has far more points than a finger can feel
 const CHART = { w: 340, h: 150, left: 34, right: 10, top: 16, bottom: 22 };
 
 const clockTime = (t: number) => new Date(t * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -130,6 +132,7 @@ export function PriceLine({ match, detail }: { match: LiveMatch; detail?: MatchD
   });
   const line = useRef<SVGPathElement>(null);
   const [hover, setHover] = useState<number | null>(null);
+  const lastBuzz = useRef(0);
   const hasLine = (data?.length ?? 0) > 1;
 
   // Draws once when the chart appears. New points during a match just extend the line.
@@ -188,7 +191,12 @@ export function PriceLine({ match, detail }: { match: LiveMatch; detail?: MatchD
     const rect = e.currentTarget.getBoundingClientRect();
     const px = ((e.clientX - rect.left) / rect.width) * CHART.w;
     const t = first.t + ((px - CHART.left) / (CHART.w - CHART.left - CHART.right)) * (last.t - first.t);
-    setHover(priceAt(points, t).t);
+    const next = priceAt(points, t).t;
+    if (e.pointerType === "touch" && next !== hover && Date.now() - lastBuzz.current > BUZZ_GAP_MS) {
+      lastBuzz.current = Date.now();
+      haptic("light");
+    }
+    setHover(next);
   }
   const hovered = hover === null ? null : points.find((p) => p.t === hover) ?? null;
 

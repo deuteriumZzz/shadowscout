@@ -88,8 +88,8 @@
 
 /* --- App bar --- */
 .pn-appbar { position: relative; z-index: 5; display: flex; align-items: center; gap: 8px; padding: max(env(safe-area-inset-top), 10px) var(--gutter) 10px; border-bottom: 1px solid var(--line); background: var(--bg); }
-.pn-appbar h1 { flex: 1; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-.pn-demo { padding: 1px 6px; font-size: 11px; font-weight: 500; color: var(--tx2); border: 1px solid var(--line-2); border-radius: 5px; }
+.pn-appbar h1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.pn-demo { flex: none; white-space: nowrap; padding: 1px 6px; font-size: 11px; font-weight: 500; color: var(--tx2); border: 1px solid var(--line-2); border-radius: 5px; }
 .pn-bankpill { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 20px; background: var(--s1); }
 .pn-bankpill .pn-odo { font-family: var(--f-num); font-size: 17px; font-weight: 500; }
 .pn-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; }
@@ -215,8 +215,8 @@
 .pn-input[aria-invalid="true"] { border-color: var(--bad); }
 
 /* --- Match centre --- */
-.pn-board { position: relative; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 8px; padding: 14px 10px 16px; overflow: hidden; border-radius: var(--r-l); background: var(--s1); }
-.pn-board__team { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; text-align: center; font-size: 14px; font-weight: 600; }
+.pn-board { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 8px; padding: 14px 10px 16px; overflow: hidden; border-radius: var(--r-l); background: var(--s1); }
+.pn-board__team { overflow-wrap: anywhere; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; text-align: center; font-size: 14px; font-weight: 600; }
 .pn-board__mid { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 96px; }
 .pn-board__score { display: flex; align-items: center; gap: 6px; font-family: var(--f-num); font-size: 46px; font-weight: 500; line-height: 1.05; }
 .pn-board__min { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
@@ -403,6 +403,27 @@
 .pn-story__duel { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; }
 .pn-story__zone { position: absolute; top: 60px; bottom: 0; z-index: 1; width: 40%; }
 
+.pn-player__name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Narrow phones: four tabs and long words have to fit --- */
+@media (max-width: 359px) {
+  .pn-player { width: 54px; margin-left: -27px; font-size: 10px; }
+  .pn-seg > button { padding: 0 4px; font-size: 12px !important; }
+  .pn-appbar h1 { font-size: 19px; }
+  .pn-board__team { font-size: 13px; }
+}
+
+/* --- Search, favourites, the scale --- */
+.pn-search { width: 100%; height: 42px; padding: 0 14px; font-size: 15px; color: var(--tx); background: var(--s1); border: 1px solid var(--line); border-radius: 11px; }
+.pn-search::placeholder { color: var(--tx2); }
+.pn-star { position: relative; display: grid; place-items: center; width: 24px; height: 24px; color: var(--tx2); }
+.pn-star::after { content: ""; position: absolute; inset: -9px; }
+.pn-star[aria-pressed="true"] { color: var(--gold); }
+.pn-table td:first-child .pn-scale { position: relative; display: block; width: 100%; height: 10px; margin-top: 6px; max-width: 180px; }
+.pn-scale::before { content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 2px; border-radius: 2px; background: var(--s3); }
+.pn-table td:first-child .pn-scale__gap { position: absolute; top: 3px; height: 4px; display: block; border-radius: 4px; transform-origin: left; }
+.pn-table td:first-child .pn-scale__dot { position: absolute; top: 1px; display: block; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; box-shadow: 0 0 0 2px var(--s1); }
+
 /* --- Match timeline and folding board --- */
 .pn-detail__head { position: relative; }
 .pn-detail__mini { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 10px; padding-top: max(env(safe-area-inset-top), 8px); pointer-events: none; }
@@ -419,8 +440,6 @@
 .pn-tline__mark[aria-pressed="true"] { border-radius: 50%; background: var(--s3); }
 
 /* --- Real forecast and price moves --- */
-.pn-table td:first-child .pn-obars { display: grid; grid-template-columns: 1fr; gap: 2px; width: 100%; max-width: 170px; margin-top: 5px; }
-.pn-obars i { display: block; height: 4px; border-radius: 4px; transform-origin: left; }
 .pn-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; }
 .pn-tile { overflow: hidden; }
 .pn-tile__flash { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }

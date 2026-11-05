@@ -21,6 +21,7 @@ import browser_session
 import requests
 import wallet
 import connections
+import match_alerts
 import storage
 from config import MINIAPP_ORIGIN
 from webapp_api.auth import require_extension_token, require_owner
@@ -114,6 +115,21 @@ def get_pending_picks_for_extension(_auth: None = Depends(require_extension_toke
         }
         for p in picks
     ]
+
+
+class AlertsIn(BaseModel):
+    kickoff: Optional[bool] = None
+    goals: Optional[bool] = None
+
+
+@app.get("/api/settings/alerts")
+def get_alerts(_owner: dict = Depends(require_owner)):
+    return match_alerts.settings()
+
+
+@app.post("/api/settings/alerts")
+def set_alerts(body: AlertsIn, _owner: dict = Depends(require_owner)):
+    return match_alerts.set_settings(body.kickoff, body.goals)
 
 
 @app.get("/api/settings/digest")

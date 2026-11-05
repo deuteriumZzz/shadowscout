@@ -90,7 +90,7 @@ export function useHold(step: () => void) {
 export const ScrollCtx = createContext<RefObject<HTMLDivElement | null> | null>(null);
 
 /** Real club crest. Falls back to initials so a CDN hiccup can't break a card. */
-export function Crest({ team, size = 32 }: { team: string; size?: number }) {
+export function Crest({ team, size = 32, logo }: { team: string; size?: number; logo?: string | null }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
@@ -101,7 +101,7 @@ export function Crest({ team, size = 32 }: { team: string; size?: number }) {
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- a small remote logo; next/image would need a config change for a prototype
-    <img src={teamLogo(team)} alt={team} width={size} height={size} loading="lazy" onError={() => setFailed(true)} style={{ width: size, height: size, objectFit: "contain", flex: "none" }} />
+    <img src={logo || teamLogo(team)} alt={team} width={size} height={size} loading="lazy" onError={() => setFailed(true)} style={{ width: size, height: size, objectFit: "contain", flex: "none" }} />
   );
 }
 

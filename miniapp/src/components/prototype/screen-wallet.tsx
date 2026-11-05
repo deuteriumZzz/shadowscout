@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { ExternalLink, Wallet } from "lucide-react";
 import { useState } from "react";
 import { M } from "./fx";
-import type { LiveMatch } from "./polymarket";
+import { positionName, type LiveMatch } from "./polymarket";
 import { errorText, openLink } from "./screen-forecast";
 import { useGame } from "./store";
 import { useConnectWallet, useDisconnectWallet, useWallet } from "@/hooks/use-shadowscout";
@@ -73,13 +73,14 @@ export function WalletSettings() {
 
 function PositionRow({ position, score }: { position: WalletPosition; score?: string }) {
   const { title, outcome, status, avg_price, price, value, pnl, url } = position;
+  const name = positionName(title, outcome);
   const waiting = status === "REDEEMABLE";
   return (
     <div className="pn-row" style={{ padding: "11px 0", borderTop: "1px solid var(--line)", gap: 12, alignItems: "flex-start" }}>
       <div style={{ minWidth: 0 }}>
-        <b style={{ fontWeight: 600 }}>{title}</b>
+        <b style={{ fontWeight: 600 }}>{name}</b>
         <p className="pn-small pn-muted">
-          {outcome}{waiting ? " · ждёт выплаты" : ` · ${cents(avg_price)} → ${cents(price)}`}
+          {waiting ? "Ждёт выплаты" : `${cents(avg_price)} → ${cents(price)}`}
           {score ? ` · сейчас ${score}` : ""}
         </p>
         {url && (
@@ -147,7 +148,7 @@ export function WalletPanel() {
           </button>
           {showClosed && data.closed.map((p, i) => (
             <div className="pn-row pn-small" key={`${p.event_slug}${p.outcome}${i}`} style={{ gap: 12 }}>
-              <span style={{ minWidth: 0 }}>{p.title}{p.outcome ? `, ${p.outcome}` : ""}</span>
+              <span style={{ minWidth: 0 }}>{positionName(p.title, p.outcome)}</span>
               {p.realized_pnl !== null && <b className="pn-num" style={{ flex: "none", color: p.realized_pnl >= 0 ? "var(--good)" : "var(--bad)" }}>{signedUsd(p.realized_pnl)}</b>}
             </div>
           ))}

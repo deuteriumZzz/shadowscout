@@ -89,6 +89,14 @@ function Stats({ detail, match }: { detail: Detail; match: LiveMatch }) {
 /** Both teams on one pitch: home in the lower half attacking up, away mirrored. */
 function Pitch({ detail, match }: { detail: Detail; match: LiveMatch }) {
   const { lineups } = detail;
+  const pitch = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  // Players start from the centre spot, which is measured because motion works in pixels.
+  useLayoutEffect(() => {
+    if (!pitch.current) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- measuring the laid-out pitch
+    setSize({ w: pitch.current.clientWidth, h: pitch.current.clientHeight });
+  }, [lineups]);
   if (!lineups) return <Empty>Составы появятся примерно за час до начала матча.</Empty>;
   // The away team faces the other way, so its left is on the right of the screen.
   const place = (lineup: Lineup, flip: boolean, color: string) =>
@@ -110,7 +118,7 @@ function Pitch({ detail, match }: { detail: Detail; match: LiveMatch }) {
         <span>{match.away.name}: {lineups.away.formation}</span>
         <span>{match.home.name}: {lineups.home.formation}</span>
       </div>
-      <div className="pn-pitch" role="img" aria-label="Расстановка команд на поле">
+      <div className="pn-pitch" ref={pitch} role="img" aria-label="Расстановка команд на поле">
         <svg viewBox="0 0 68 100" preserveAspectRatio="none" aria-hidden="true">
           <g fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="0.4">
             <rect x="2" y="2" width="64" height="96" />
@@ -120,17 +128,17 @@ function Pitch({ detail, match }: { detail: Detail; match: LiveMatch }) {
             <rect x="16" y="85" width="36" height="13" />
           </g>
         </svg>
-        {players.map((p, i) => (
+        {size && players.map((p, i) => (
           <motion.div
             key={`${p.name}${p.jersey}${i}`}
             className="pn-player"
             style={{ left: `${p.x}%`, top: `${p.y}%` }}
-            initial={{ opacity: 0, scale: 0.4 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ ...M.spring.bouncy, delay: i * 0.02 }}
+            initial={{ opacity: 0, scale: 0.5, x: ((50 - p.x) / 100) * size.w, y: ((50 - p.y) / 100) * size.h }}
+            animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+            transition={{ ...M.spring.gentle, delay: i * 0.025 }}
           >
             <i className="pn-player__num" style={{ background: p.color }}>{p.jersey}</i>
-            {p.name}
+            <span className="pn-player__name">{p.name}</span>
           </motion.div>
         ))}
       </div>

@@ -37,13 +37,45 @@ function profitOf(p: Pick) {
 }
 
 const VERDICT = { win: "зашла", loss: "не зашла", push: "возврат" } as const;
+const MAX_IN_A_ROW = 2;
+
+interface Moment {
+  id: string;
+  title: string;
+  line: string;
+  sub: string;
+  value: number;
+  tone: "win" | "other";
+}
+
+const singleOf = (p: Pick): Moment => ({
+  id: String(p.id),
+  title: `Финал${p.final_score ? ` ${p.final_score.replace("-", ":")}` : ""}`,
+  line: p.match.replace(" - ", " — "),
+  sub: `${pickName(p.match, p.market, p.pick, p.line)}: ${p.result ? VERDICT[p.result] : ""}`,
+  value: profitOf(p),
+  tone: p.result === "win" ? "win" : "other",
+});
+
+function summaryOf(picks: Pick[]): Moment {
+  const wins = picks.filter((p) => p.result === "win").length;
+  const value = picks.reduce((sum, p) => sum + profitOf(p), 0);
+  return {
+    id: picks.map((p) => p.id).join("-"),
+    title: "Финалы",
+    line: `Закончилось матчей со ставками: ${picks.length}`,
+    sub: `Зашло ${wins} из ${picks.length}`,
+    value,
+    tone: value > 0 ? "win" : "other",
+  };
+}
 
 /** The final whistle on a no-money bet, once per bet, then the sum lands on the Bank tab. Also catches what settled while the app was closed. */
 export function SettledMoments() {
   const { state, dispatch } = useGame();
   const { data: history } = useHistory();
   const qc = useQueryClient();
-  const [queue, setQueue] = useState<Pick[]>([]);
+  const [queue, setQueue] = useState<Moment[]>([]);
   const amount = useRef<HTMLDivElement>(null);
   const current = queue[0];
 
@@ -59,13 +91,14 @@ export function SettledMoments() {
     const fresh = settled.filter((h) => !seen.includes(h.id)).sort((a, b) => a.id - b.id);
     if (!fresh.length) return;
     writeSeen([...seen, ...fresh.map((h) => h.id)]);
+    // More than a couple at once would hold the screen hostage: they become one summary.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to new data from the server
-    setQueue((q) => [...q, ...fresh]);
+    setQueue((q) => [...q, ...(fresh.length > MAX_IN_A_ROW ? [summaryOf(fresh)] : fresh.map(singleOf))]);
   }, [history]);
 
   const close = useCallback(() => {
     if (!current) return;
-    const value = profitOf(current);
+    const value = current.value;
     const from = amount.current?.getBoundingClientRect();
     const to = document.querySelector('[data-dock="bank"]')?.getBoundingClientRect();
     const refreshBank = () => void qc.invalidateQueries({ queryKey: ["bankroll"] });
@@ -87,7 +120,7 @@ export function SettledMoments() {
   }, [current, dispatch, qc, state.calm, state.prefs.currency]);
 
   const currentId = current?.id;
-  const currentResult = current?.result;
+  const currentResult = current?.tone;
   useEffect(() => {
     if (currentId === undefined) return;
     if (currentResult === "win") hapticResult("success");
@@ -96,7 +129,7 @@ export function SettledMoments() {
     return () => clearTimeout(t);
   }, [currentId, currentResult, close]);
 
-  const value = current ? profitOf(current) : 0;
+  const value = current?.value ?? 0;
   return (
     <AnimatePresence>
       {current && (
@@ -116,13 +149,13 @@ export function SettledMoments() {
           </motion.div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <motion.div className="pn-moment__big" style={{ fontSize: 30 }} initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ ...M.spring.snappy, delay: 0.2 }}>
-              Финал{current.final_score ? ` ${current.final_score.replace("-", ":")}` : ""}
+              {current.title}
             </motion.div>
             <motion.div className="pn-moment__line" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ ...M.spring.snappy, delay: 0.28 }}>
-              {current.match.replace(" - ", " — ")}
+              {current.line}
             </motion.div>
             <motion.div className="pn-moment__sub" initial={{ opacity: 0 }} animate={{ opacity: 0.86 }} transition={{ delay: 0.42 }}>
-              {pickName(current.match, current.market, current.pick, current.line)}: {current.result ? VERDICT[current.result] : ""}. Без денег, условный банк
+              {current.sub}. Без денег, условный банк
             </motion.div>
             <motion.div
               ref={amount}

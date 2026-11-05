@@ -278,6 +278,8 @@ def analyze_match(team_a: str, team_b: str, league_hint: str | None = None) -> d
         "analysis_text": text, "key_factors": [], "facts": [], "facts_dropped": 0, "missing": [],
         "picks": [], "decisions": [], "provider": provider_name, "prompt_version": PROMPT_VERSION,
         "url": event.get("url") if isinstance(event, dict) else None, "error": None,
+        "home_logo": event.get("home_logo") if isinstance(event, dict) else None,
+        "away_logo": event.get("away_logo") if isinstance(event, dict) else None,
     }
 
     parsed = _parse_json_block(text)
@@ -378,6 +380,7 @@ def store_picks(result: dict) -> None:
             price_verified=p["price_verified"], recommended_stake=stake, line=p["line"],
             fair_probability=p["fair_probability"], blended_probability=p["blended_probability"],
             provider=result["provider"], prompt_version=result["prompt_version"],
+            home_logo=result.get("home_logo"), away_logo=result.get("away_logo"),
         )
 
 
