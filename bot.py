@@ -23,7 +23,8 @@ import bookmakers
 import browser_session
 import storage
 from analysis import analyze_match, check_late_news, check_result, scan_league
-from config import BOOKMAKER_ADAPTER, BOOKMAKER_SITE, MINIAPP_URL, ODDS_API_KEY, TELEGRAM_BOT_TOKEN
+import connections
+from config import BOOKMAKER_ADAPTER, MINIAPP_URL, TELEGRAM_BOT_TOKEN
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("shadowscout")
@@ -270,8 +271,8 @@ async def button_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         stake = pick["recommended_stake"] if pick is not None else bankroll["suggested_stake"]
         storage.place(pick_id, stake)
         try:
-            await asyncio.to_thread(browser_session.open_bookmaker, BOOKMAKER_SITE)
-            browser_note = f" Открыл {BOOKMAKER_SITE} — найдите матч и поставьте сами."
+            await asyncio.to_thread(browser_session.open_bookmaker, connections.bookmaker_site())
+            browser_note = f" Открыл {connections.bookmaker_site()} — найдите матч и поставьте сами."
         except Exception:
             log.exception("failed to open bookmaker browser")
             browser_note = " Не удалось открыть браузер букмекера, поставьте вручную."
@@ -370,7 +371,7 @@ async def clv_job(context: ContextTypes.DEFAULT_TYPE):
     adapter = bookmakers.get_adapter(BOOKMAKER_ADAPTER)
     for pick in storage.picks_awaiting_closing_line():
         team_a, team_b = (t.strip() for t in pick["match"].split(" - ", 1))
-        data = adapter.get_market(team_a, team_b, pick["league"], pick["market"], ODDS_API_KEY)
+        data = adapter.get_market(team_a, team_b, pick["league"], pick["market"], connections.get_key("odds_api"))
         price, _ = adapter.price_for(data["event"], pick["market"], pick["pick"])
         if price is not None:
             storage.set_closing_odds(pick["id"], price)
@@ -389,7 +390,7 @@ async def steam_job(context: ContextTypes.DEFAULT_TYPE):
         if not pick["odds"]:
             continue
         team_a, team_b = (t.strip() for t in pick["match"].split(" - ", 1))
-        data = adapter.get_market(team_a, team_b, pick["league"], pick["market"], ODDS_API_KEY)
+        data = adapter.get_market(team_a, team_b, pick["league"], pick["market"], connections.get_key("odds_api"))
         price, _ = adapter.price_for(data["event"], pick["market"], pick["pick"])
         if price is None:
             continue

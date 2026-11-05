@@ -53,9 +53,11 @@ class ClaudeProvider(AnalysisProvider):
     MODEL = "claude-opus-5"
     EFFORT = "high"
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None, model: str | None = None):
         from anthropic import Anthropic
-        self.client = Anthropic()
+        # No key given: the SDK falls back to ANTHROPIC_API_KEY, as before.
+        self.client = Anthropic(api_key=api_key) if api_key else Anthropic()
+        self.MODEL = model or self.MODEL
 
     def analyze(self, team_a, team_b, league_hint, user_prompt):
         with self.client.messages.stream(
@@ -99,11 +101,19 @@ class GroqProvider(AnalysisProvider):
         "{a} vs {b} preview prediction",
         "{a} coach manager news form",
         "{b} coach manager news form",
+        "{a} vs {b} predicted lineup referee",
+        "{a} dressing room wages conflict news",
+        "{b} dressing room wages conflict news",
     ]
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, model: str | None = None):
         from groq import Groq
         self.client = Groq(api_key=api_key)
+        self.MODEL = model or self.MODEL
+
+    def _complete(self, messages: list[dict], max_tokens: int) -> str:
+        completion = self.client.chat.completions.create(model=self.MODEL, messages=messages, max_tokens=max_tokens)
+        return completion.choices[0].message.content
 
     def _search_context(self, team_a: str, team_b: str) -> str:
         from ddgs import DDGS
@@ -122,15 +132,10 @@ class GroqProvider(AnalysisProvider):
     def analyze(self, team_a, team_b, league_hint, user_prompt):
         search_context = self._search_context(team_a, team_b)
         full_prompt = f"Web search results (use these as your research):\n{search_context}\n\n{user_prompt}"
-        completion = self.client.chat.completions.create(
-            model=self.MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": full_prompt},
-            ],
-            max_tokens=4000,
+        return self._complete(
+            [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}],
+            4000,
         )
-        return completion.choices[0].message.content
 
     def quick_answer(self, team_a, team_b, search_query, prompt):
         from ddgs import DDGS
@@ -141,15 +146,43 @@ class GroqProvider(AnalysisProvider):
             results = []
         context = "\n".join(f"- {r.get('title', '')}: {r.get('body', '')}" for r in results) or "(no results)"
         full_prompt = f"Search results:\n{context}\n\n{prompt}"
-        completion = self.client.chat.completions.create(
-            model=self.MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": full_prompt},
-            ],
-            max_tokens=1000,
+        return self._complete(
+            [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_prompt}],
+            1000,
         )
-        return completion.choices[0].message.content
+
+
+class LLMHttpError(Exception):
+    """Carries status_code so _is_rate_limited() treats a 429 like any SDK's."""
+
+    def __init__(self, status_code: int):
+        super().__init__(f"LLM endpoint answered HTTP {status_code}")
+        self.status_code = status_code
+
+
+class OpenAICompatibleProvider(GroqProvider):
+    """Any endpoint speaking the OpenAI chat API (OpenAI, OpenRouter, DeepSeek,
+    a local model...), chosen by base URL + model in the app. These have no
+    search of their own here, so it inherits Groq's DuckDuckGo pass: expect the
+    same shallower research, however strong the model is."""
+
+    def __init__(self, api_key: str, base_url: str, model: str):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.MODEL = model
+
+    def _complete(self, messages: list[dict], max_tokens: int) -> str:
+        import requests
+
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            json={"model": self.MODEL, "messages": messages, "max_tokens": max_tokens},
+            timeout=300,
+        )
+        if not response.ok:
+            raise LLMHttpError(response.status_code)
+        return response.json()["choices"][0]["message"]["content"]
 
 
 class GeminiProvider(AnalysisProvider):
@@ -162,10 +195,11 @@ class GeminiProvider(AnalysisProvider):
 
     MODEL = "gemini-2.0-flash"
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, model: str | None = None):
         from google import genai
         self.genai = genai
         self.client = genai.Client(api_key=api_key)
+        self.MODEL = model or self.MODEL
 
     def _generate(self, system: str, prompt: str, max_tokens: int) -> str:
         response = self.client.models.generate_content(
@@ -236,32 +270,41 @@ class FallbackProvider(AnalysisProvider):
 
 
 def get_provider(name: str) -> AnalysisProvider:
+    # Keys and models come from connections.py on every call, so a change made
+    # in the Mini App applies to the next analysis without a restart.
+    import connections
+
+    key = connections.get_key(name)
+    model = connections.get_model(name)
     if name == "claude":
-        return ClaudeProvider()
+        return ClaudeProvider(key, model)
+    if name in ("groq", "gemini", "openai"):
+        if not key:
+            raise ValueError(f"LLM provider {name!r} has no API key: add one in the app or .env")
     if name == "groq":
-        from config import GROQ_API_KEY
-        if not GROQ_API_KEY:
-            raise ValueError("LLM_PROVIDER=groq but GROQ_API_KEY is not set")
-        return GroqProvider(GROQ_API_KEY)
+        return GroqProvider(key, model)
     if name == "gemini":
-        from config import GEMINI_API_KEY
-        if not GEMINI_API_KEY:
-            raise ValueError("LLM_PROVIDER=gemini but GEMINI_API_KEY is not set")
-        return GeminiProvider(GEMINI_API_KEY)
-    raise ValueError(f"Unknown LLM_PROVIDER={name!r}, available: claude, groq, gemini")
+        return GeminiProvider(key, model)
+    if name == "openai":
+        base_url = connections.get_base_url(name)
+        if not (base_url and model):
+            raise ValueError("The OpenAI-compatible provider needs a base URL and a model")
+        return OpenAICompatibleProvider(key, base_url, model)
+    raise ValueError(f"Unknown LLM provider {name!r}, available: claude, groq, gemini, openai")
 
 
 def get_provider_chain() -> AnalysisProvider:
-    """LLM_PROVIDER is always tried first; LLM_FALLBACK_PROVIDERS (comma-
-    separated, e.g. "groq,gemini") are tried in order after it, but only on
-    a rate-limit/quota error. Built eagerly (every provider in the chain is
-    constructed up front) so a fallback with a missing API key fails loudly
-    at the start of the call instead of silently vanishing from the chain
-    mid-analysis. No fallback configured -> identical to get_provider(), no
-    wrapping, no behavior change from before this existed."""
-    from config import LLM_FALLBACK_PROVIDERS, LLM_PROVIDER
+    """The primary is always tried first; fallbacks are tried in order after
+    it, but only on a rate-limit/quota error. Both come from the app, then
+    LLM_PROVIDER / LLM_FALLBACK_PROVIDERS. Built eagerly (every provider in the
+    chain is constructed up front) so a fallback with a missing API key fails
+    loudly at the start of the call instead of silently vanishing from the
+    chain mid-analysis. No fallback configured -> identical to get_provider(),
+    no wrapping."""
+    import connections
 
-    names = [LLM_PROVIDER] + [p.strip() for p in LLM_FALLBACK_PROVIDERS.split(",") if p.strip()]
+    primary, fallbacks = connections.llm_chain()
+    names = [primary] + fallbacks
     if len(names) == 1:
         return get_provider(names[0])
     return FallbackProvider([(name, get_provider(name)) for name in names])

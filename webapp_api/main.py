@@ -16,8 +16,9 @@ from pydantic import BaseModel, Field
 
 import backtest
 import browser_session
+import connections
 import storage
-from config import API_FOOTBALL_KEY, BOOKMAKER_SITE, MINIAPP_ORIGIN
+from config import MINIAPP_ORIGIN
 from webapp_api.auth import require_extension_token, require_owner
 
 log = logging.getLogger("shadowscout.webapp_api")
@@ -83,9 +84,10 @@ def get_equity_curve(_owner: dict = Depends(require_owner)):
 
 @app.get("/api/backtest")
 async def run_backtest(league: str, season: int, _owner: dict = Depends(require_owner)):
-    if not API_FOOTBALL_KEY:
-        raise HTTPException(400, "API_FOOTBALL_KEY is not configured")
-    return await asyncio.to_thread(backtest.backtest_league, league, season, API_FOOTBALL_KEY)
+    api_key = connections.get_key("api_football")
+    if not api_key:
+        raise HTTPException(400, "API-Football key is not configured")
+    return await asyncio.to_thread(backtest.backtest_league, league, season, api_key)
 
 
 # --- extension/ (bet-slip auto-fill browser extension) --------------------
@@ -157,7 +159,7 @@ async def place_pick(pick_id: int, _owner: dict = Depends(require_owner)):
 
     browser_opened = True
     try:
-        await asyncio.to_thread(browser_session.open_bookmaker, BOOKMAKER_SITE)
+        await asyncio.to_thread(browser_session.open_bookmaker, connections.bookmaker_site())
     except Exception:
         log.exception("failed to open bookmaker browser")
         browser_opened = False
@@ -165,3 +167,86 @@ async def place_pick(pick_id: int, _owner: dict = Depends(require_owner)):
     result = _row(storage.get_pick(pick_id))
     result["browser_opened"] = browser_opened
     return result
+
+
+# --- Connections: API keys, the active model, the bookmaker -----------------
+# No route here ever returns a stored key, only a masked tail. Fixed paths are
+# declared before /{name} so "llm" and "bookmaker" can't be read as a name.
+
+
+class LlmChainIn(BaseModel):
+    primary: str
+    fallbacks: list[str] = []
+
+
+class BookmakerIn(BaseModel):
+    site: str
+
+
+class ConnectionIn(BaseModel):
+    key: Optional[str] = Field(default=None, max_length=500)
+    base_url: Optional[str] = Field(default=None, max_length=300)
+    model: Optional[str] = Field(default=None, max_length=120)
+
+
+@app.get("/api/connections")
+def list_connections(_owner: dict = Depends(require_owner)):
+    return connections.status()
+
+
+@app.post("/api/connections/llm")
+def set_llm_chain(body: LlmChainIn, _owner: dict = Depends(require_owner)):
+    try:
+        connections.set_llm_chain(body.primary, body.fallbacks)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return connections.status()
+
+
+@app.post("/api/connections/bookmaker")
+def set_bookmaker(body: BookmakerIn, _owner: dict = Depends(require_owner)):
+    try:
+        connections.set_bookmaker_site(body.site)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return connections.status()
+
+
+@app.post("/api/connections/bookmaker/open")
+async def open_bookmaker_for_login(_owner: dict = Depends(require_owner)):
+    """Opens the persistent Chrome profile so the owner can log in by hand.
+    The password goes into the bookmaker's own page: this API never sees it."""
+    try:
+        await asyncio.to_thread(browser_session.open_bookmaker, connections.bookmaker_site())
+    except Exception:
+        log.exception("failed to open bookmaker browser")
+        raise HTTPException(502, "Не удалось открыть браузер: API должен работать на компьютере с Chrome")
+    return {"opened": True}
+
+
+@app.post("/api/connections/{name}")
+def save_connection(name: str, body: ConnectionIn, _owner: dict = Depends(require_owner)):
+    try:
+        connections.save(name, body.key, body.base_url, body.model)
+    except connections.SecretNotConfigured as exc:
+        raise HTTPException(503, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return connections.status()
+
+
+@app.post("/api/connections/{name}/test")
+def test_connection(name: str, body: ConnectionIn, _owner: dict = Depends(require_owner)):
+    try:
+        return connections.test(name, body.key, body.base_url)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/connections/{name}/delete")
+def delete_connection(name: str, _owner: dict = Depends(require_owner)):
+    try:
+        connections.delete(name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return connections.status()

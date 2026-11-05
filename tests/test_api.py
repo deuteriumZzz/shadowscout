@@ -58,7 +58,7 @@ class PicksApiTests(unittest.TestCase):
         self.assertEqual(response.json()["status"], "placed")
         self.assertEqual(response.json()["stake"], 17.5)
         self.assertTrue(response.json()["browser_opened"])
-        open_bookmaker.assert_called_once_with(api_main.BOOKMAKER_SITE)
+        open_bookmaker.assert_called_once_with(api_main.connections.bookmaker_site())
         self.assertEqual(self.client.post(f"/api/picks/{pick_id}/place").status_code, 409)
 
     def test_place_rejects_missing_bankroll(self):

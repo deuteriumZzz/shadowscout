@@ -29,7 +29,8 @@ import football_data
 import llm_providers
 import poisson_model
 import xg_model
-from config import API_FOOTBALL_KEY, BOOKMAKER_ADAPTER, MIN_MODEL_PROBABILITY, ODDS_API_KEY
+import connections
+from config import BOOKMAKER_ADAPTER, MIN_MODEL_PROBABILITY
 
 EDGE_THRESHOLD = 0.05  # minimum probability edge over the fair market price to recommend a bet
 LEAGUE_SCAN_LIMIT = 12  # fixtures per /league scan — each one is a full LLM call, so this caps cost
@@ -60,19 +61,20 @@ def _stats_context(team_a: str, team_b: str, total_point: float = 2.5) -> tuple[
     other controls these, so the LLM's own stated probability isn't graded
     solely by the system that produced it, and goals-based vs xG-based
     disagreement is itself informative (finishing variance vs real chances)."""
-    if not API_FOOTBALL_KEY:
+    api_key = connections.get_key("api_football")
+    if not api_key:
         return "", None, None
     try:
-        id_a = football_data.find_team_id(team_a, API_FOOTBALL_KEY)
-        id_b = football_data.find_team_id(team_b, API_FOOTBALL_KEY)
+        id_a = football_data.find_team_id(team_a, api_key)
+        id_b = football_data.find_team_id(team_b, api_key)
         if not (id_a and id_b):
             return "", None, None
-        form_a = football_data.recent_form(id_a, API_FOOTBALL_KEY)
-        form_b = football_data.recent_form(id_b, API_FOOTBALL_KEY)
-        h2h = football_data.head_to_head(id_a, id_b, API_FOOTBALL_KEY)
+        form_a = football_data.recent_form(id_a, api_key)
+        form_b = football_data.recent_form(id_b, api_key)
+        h2h = football_data.head_to_head(id_a, id_b, api_key)
         text = f"{team_a} last 5: {form_a}\n{team_b} last 5: {form_b}\nHead-to-head: {h2h}\n"
 
-        poisson = poisson_model.match_probabilities(id_a, id_b, API_FOOTBALL_KEY, total_point)
+        poisson = poisson_model.match_probabilities(id_a, id_b, api_key, total_point)
         if poisson:
             eg = poisson["expected_goals"]
             text += (
@@ -84,7 +86,7 @@ def _stats_context(team_a: str, team_b: str, total_point: float = 2.5) -> tuple[
                 f"yourself rather than deferring to it.\n"
             )
 
-        xg = xg_model.match_probabilities(team_a, team_b, API_FOOTBALL_KEY, total_point)
+        xg = xg_model.match_probabilities(team_a, team_b, api_key, total_point)
         if xg:
             eg = xg["expected_goals"]
             text += (
@@ -100,7 +102,7 @@ def _stats_context(team_a: str, team_b: str, total_point: float = 2.5) -> tuple[
 
 def analyze_match(team_a: str, team_b: str, league_hint: str | None = None) -> dict:
     adapter = bookmakers.get_adapter(BOOKMAKER_ADAPTER)
-    market_data = {m: adapter.get_market(team_a, team_b, league_hint, m, ODDS_API_KEY) for m in bookmakers.MARKETS}
+    market_data = {m: adapter.get_market(team_a, team_b, league_hint, m, connections.get_key("odds_api")) for m in bookmakers.MARKETS}
     totals_point = float(market_data["totals"]["line"]) if market_data["totals"]["line"] else 2.5
     stats_text, poisson, xg = _stats_context(team_a, team_b, totals_point)
 
@@ -118,20 +120,36 @@ def analyze_match(team_a: str, team_b: str, league_hint: str | None = None) -> d
 
     user_prompt = f"""Analyze the upcoming football match: {team_a} vs {team_b}{f' ({league_hint})' if league_hint else ''}.
 
-Use web search to check: current form (last 5-6 games), injuries and suspensions for key players, \
-recent coaching changes, table position / motivation (title race, relegation battle, European \
-spots, dead rubber, upcoming fixture congestion), head-to-head history, and typical goal-scoring \
-tendencies for both teams (relevant for the totals market).
+Use web search to check each of these for both teams:
+- Form: the last 5-6 games, results and performance, not just the table.
+- Availability: injuries and suspensions of key players, and who is returning.
+- Line-ups: confirmed or expected starting XI. Say so plainly if it isn't announced yet.
+- Dressing room: conflicts, unpaid wages, ownership or financial trouble, contract disputes, \
+public statements by players or the coach.
+- Coaching: recent changes, a coach under pressure, tactical shifts.
+- Motivation: table position, title race, relegation battle, European spots, dead rubber, derby.
+- Fatigue and calendar: rest days, fixture congestion, European or cup games either side of this \
+one, travel, players back from internationals, likely rotation before a bigger game.
+- Head-to-head history and typical goal-scoring tendencies (relevant for the totals market).
+- Conditions: the referee and their card/penalty tendencies, weather, pitch.
 
 {market_text}
 {stats_text}
+
+Weigh these facts together: no single factor decides a match. Separate what is confirmed by a \
+reliable source from rumour. A rumour may nudge your estimate but must never justify a pick on \
+its own, and many factors already move the market, so ask whether the odds have priced them in. \
+If you can't find reliable information on a factor, say so; never invent it.
 
 After your research, write a short human-readable analysis in Russian (a few paragraphs covering \
 the factors above, including a note on likely goals for the totals market), followed by a fenced \
 ```json block with exactly this shape:
 {{"markets": {{
 {schema_fields}
-}}, "key_factors": ["..."]}}
+}}, "key_factors": ["[подтверждено] ...", "[слух] ..."]}}
+
+Each key_factors entry is one short fact in Russian that actually moved your estimate, starting \
+with its reliability tag: [подтверждено] or [слух].
 
 Each market's model_probabilities must sum to ~1.0 and reflect your own genuine assessment, not the \
 market odds. Only set a market's pick to something other than "skip" if your estimated probability \
@@ -212,7 +230,7 @@ def scan_league(league_hint: str, limit: int = LEAGUE_SCAN_LIMIT) -> list[dict]:
     schedule from an LLM's memory/search snippets is exactly the kind of
     thing that quietly invents or misses fixtures."""
     adapter = bookmakers.get_adapter(BOOKMAKER_ADAPTER)
-    fixtures = adapter.list_fixtures(league_hint, ODDS_API_KEY)[:limit]
+    fixtures = adapter.list_fixtures(league_hint, connections.get_key("odds_api"))[:limit]
     return [analyze_match(home, away, league_hint) for home, away in fixtures]
 
 
