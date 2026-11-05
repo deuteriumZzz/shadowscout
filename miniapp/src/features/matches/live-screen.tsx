@@ -12,6 +12,7 @@ import type { Pick } from "@/lib/types";
 import { useGame } from "@/store/app-store";
 import { M } from "@/ui/motion";
 import { MatchCard } from "./match-card";
+import { MatchOfDay } from "./match-of-day";
 import { useMatches } from "./use-matches";
 
 const NEXT_SHOWN = 3;
@@ -77,12 +78,12 @@ function LiveNow() {
   const { data, isPending } = useMatches();
   const matches = useMemo(() => data?.matches ?? [], [data]);
   const live = matches.filter((m) => m.espn?.state === "in");
-  const upcoming = matches.filter((m) => m.espn?.state !== "in").slice(0, NEXT_SHOWN);
+  const [next, ...upcoming] = matches.filter((m) => m.espn?.state !== "in").slice(0, NEXT_SHOWN + 1);
   if (isPending) return <div className="pn-skeleton" style={{ height: 90 }} aria-busy="true" />;
   return (
     <section className="pn-stack">
-      <h2 className="pn-h2">Сейчас идут: {live.length}</h2>
-      {live.length === 0 && <p className="pn-small pn-muted">Сейчас матчей нет.</p>}
+      {live.length > 0 && <h2 className="pn-h2">Сейчас идут: {live.length}</h2>}
+      {live.length === 0 && (next ? <MatchOfDay key={next.id} match={next} tag="Следующий матч" /> : <p className="pn-small pn-muted">Сейчас матчей нет.</p>)}
       <AnimatePresence initial={false} mode="popLayout">
         {live.map((m, i) => <MatchCard key={m.id} match={m} index={i} />)}
       </AnimatePresence>

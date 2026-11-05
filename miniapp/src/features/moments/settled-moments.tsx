@@ -13,7 +13,8 @@ import { haptic, hapticResult } from "@/lib/telegram";
 import type { Pick } from "@/lib/types";
 
 const SEEN_KEY = "pn-settled-seen";
-const SHOWN_MS = 3400;
+const FLIP_AFTER_MS = 1000;
+const SHOWN_MS = 4400;
 const MAX_REMEMBERED = 300;
 
 function readSeen(): number[] | null {
@@ -45,6 +46,8 @@ interface Moment {
   id: string;
   title: string;
   line: string;
+  /** What was at stake, shown first: the card then turns over to how it ended. */
+  front: string;
   sub: string;
   value: number;
   tone: "win" | "other";
@@ -54,6 +57,7 @@ const singleOf = (p: Pick): Moment => ({
   id: String(p.id),
   title: `Финал${p.final_score ? ` ${p.final_score.replace("-", ":")}` : ""}`,
   line: p.match.replace(" - ", " — "),
+  front: `Ставка: ${pickName(p.match, p.market, p.pick, p.line)}`,
   sub: `${pickName(p.match, p.market, p.pick, p.line)}: ${p.result ? VERDICT[p.result] : ""}`,
   value: profitOf(p),
   tone: p.result === "win" ? "win" : "other",
@@ -66,6 +70,7 @@ function summaryOf(picks: Pick[]): Moment {
     id: picks.map((p) => p.id).join("-"),
     title: "Финалы",
     line: `Закончилось матчей со ставками: ${picks.length}`,
+    front: `Ставок: ${picks.length}`,
     sub: `Зашло ${wins} из ${picks.length}`,
     value,
     tone: value > 0 ? "win" : "other",
@@ -80,6 +85,7 @@ export function SettledMoments() {
   const [queue, setQueue] = useState<Moment[]>([]);
   const amount = useRef<HTMLDivElement>(null);
   const reduceMotion = useReducedMotion();
+  const [flippedId, setFlippedId] = useState<string | null>(null);
   const current = queue[0];
 
   useEffect(() => {
@@ -123,19 +129,27 @@ export function SettledMoments() {
   }, [current, dispatch, qc, state.calm, state.currency]);
 
   const currentId = current?.id;
+  const still = state.calm || !!reduceMotion;
+  const flipped = !!current && flippedId === current.id;
   const currentResult = current?.tone;
   useEffect(() => {
     if (currentId === undefined) return;
-    if (currentResult === "win") hapticResult("success");
-    else haptic("medium");
+    const flip = setTimeout(() => {
+      setFlippedId(currentId);
+      if (currentResult === "win") hapticResult("success");
+      else haptic("medium");
+    }, still ? 0 : FLIP_AFTER_MS);
     const t = setTimeout(close, SHOWN_MS);
-    return () => clearTimeout(t);
-  }, [currentId, currentResult, close]);
+    return () => {
+      clearTimeout(flip);
+      clearTimeout(t);
+    };
+  }, [currentId, currentResult, close, still]);
 
   const value = current?.value ?? 0;
   return (
     <>
-    {current?.tone === "win" && !state.calm && !reduceMotion && <Confetti key={current.id} />}
+    {flipped && current?.tone === "win" && !still && <Confetti key={current.id} />}
     <AnimatePresence>
       {current && (
         <motion.div
@@ -159,19 +173,22 @@ export function SettledMoments() {
             <motion.div className="pn-moment__line" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ ...M.spring.snappy, delay: 0.28 }}>
               {current.line}
             </motion.div>
-            <motion.div className="pn-moment__sub" initial={{ opacity: 0 }} animate={{ opacity: 0.86 }} transition={{ delay: 0.42 }}>
-              {current.sub}. Без денег, условный банк
-            </motion.div>
-            <motion.div
-              ref={amount}
-              className="pn-num"
-              style={{ display: "inline-block", marginTop: 4, fontSize: 22, color: value > 0 ? "var(--gold)" : value < 0 ? "var(--bad)" : undefined }}
-              initial={{ y: 8, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ ...M.spring.snappy, delay: 0.5 }}
-            >
-              {value > 0 ? "+" : value < 0 ? "−" : ""}{Math.abs(Math.round(value)).toLocaleString("ru-RU")} {state.currency}
-            </motion.div>
+            <div className="pn-moment__flip">
+              <AnimatePresence mode="wait" initial={false}>
+                {flipped ? (
+                  <motion.div key="back" initial={{ rotateX: -90, opacity: 0 }} animate={{ rotateX: 0, opacity: 1 }} transition={M.spring.snappy}>
+                    <div className="pn-moment__sub" style={{ opacity: 0.86 }}>{current.sub}. Без денег, условный банк</div>
+                    <div ref={amount} className="pn-num" style={{ display: "inline-block", marginTop: 4, fontSize: 22, color: value > 0 ? "var(--gold)" : value < 0 ? "var(--bad)" : undefined }}>
+                      {value > 0 ? "+" : value < 0 ? "−" : ""}{Math.abs(Math.round(value)).toLocaleString("ru-RU")} {state.currency}
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div key="front" className="pn-moment__sub" style={{ opacity: 0.86 }} initial={{ opacity: 0 }} animate={{ opacity: 0.86 }} exit={{ rotateX: 90, opacity: 0 }} transition={{ duration: M.dur.fast }}>
+                    {current.front}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
           <motion.div className="pn-moment__bar" initial={{ scaleX: 1 }} animate={{ scaleX: 0 }} transition={{ duration: SHOWN_MS / 1000, ease: "linear" }} />
         </motion.div>

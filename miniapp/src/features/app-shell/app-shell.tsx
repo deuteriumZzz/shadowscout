@@ -292,7 +292,8 @@ function useTelegramChrome(theme: "light" | "dark") {
   useEffect(() => {
     if (!hasBack) return;
     const back = tg!.BackButton!;
-    const onBack = () => dispatch(state.openMatch ? { type: "CLOSE_MATCH" } : state.sheet ? { type: "SHEET", sheet: null } : { type: "TAB", tab: "bets" });
+    // Sheets close themselves on Escape, top one first: Back takes the same way out.
+    const onBack = () => document.querySelector(".pn-sheet") ? window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })) : dispatch(state.openMatch ? { type: "CLOSE_MATCH" } : state.sheet ? { type: "SHEET", sheet: null } : { type: "TAB", tab: "bets" });
     if (canGoBack) back.show();
     else back.hide();
     back.onClick(onBack);

@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import type { EventKind, Lineup, MatchDetail as Detail, TableRow } from "@/lib/feeds/espn";
 import { ForecastSection } from "@/features/forecast/forecast";
 import { clubColor } from "@/lib/clubs";
+import { haptic } from "@/lib/telegram";
 import { Ball, CardIcon, ClubTints, FormPips, teamNameSize } from "@/ui/football";
 import { flyIn, flyOut, M, type Morph } from "@/ui/motion";
 import { RollDigit } from "@/ui/numbers";
@@ -22,6 +23,10 @@ const LIVE_REFRESH_MS = 20_000;
 const IDLE_REFRESH_MS = 120_000;
 
 type View = "forecast" | "overview" | "events" | "stats" | "lineups";
+
+const SWIPE_MIN = 60;
+// These answer to a finger moving across them: a swipe there would change the tab by accident.
+const NO_SWIPE = ".pn-chart, .pn-tline, .pn-seg";
 
 const KIND_LABEL: Record<EventKind, string> = { goal: "Гол", yellow: "Жёлтая карточка", red: "Красная карточка", sub: "Замена" };
 
@@ -221,6 +226,8 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
   const boardOpacity = useTransform(scrollY, [0, BOARD_FADE_END], [1, 0.35]);
 
   const [chosen, setChosen] = useState<View | null>(null);
+  const [direction, setDirection] = useState(1);
+  const canSwipe = useRef(false);
   const { data, isPending, isError, refetch } = useQuery({
     queryKey: ["match-detail", espn?.id],
     queryFn: () => fetchDetail(espn!.id, espn!.code),
@@ -230,7 +237,7 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
   });
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector(".pn-sheet") && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -251,6 +258,10 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
     { id: "overview", label: "Обзор" },
     ...(data ? [{ id: "events" as const, label: "События" }, { id: "stats" as const, label: "Статистика" }, { id: "lineups" as const, label: "Составы" }] : []),
   ];
+  const goTo = (next: View) => {
+    setDirection(tabs.findIndex((t) => t.id === next) > tabs.findIndex((t) => t.id === view) ? 1 : -1);
+    setChosen(next);
+  };
 
   return createPortal(
     <motion.div className="pn-detail" role="dialog" aria-modal="true" aria-label={`${match.home.name} против ${match.away.name}`} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={M.spring.sheet}>
@@ -270,7 +281,21 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
         </motion.div>
         <button className="pn-icon" aria-label="Закрыть" onClick={onClose}><X size={22} aria-hidden="true" /></button>
       </header>
-      <div className="pn-detail__body" ref={body}>
+      <motion.div
+        className="pn-detail__body"
+        ref={body}
+        style={{ touchAction: "pan-y" }}
+        onPanStart={(e) => {
+          canSwipe.current = !(e.target as Element | null)?.closest?.(NO_SWIPE);
+        }}
+        onPanEnd={(_, { offset }) => {
+          if (!canSwipe.current || Math.abs(offset.x) < SWIPE_MIN || Math.abs(offset.x) < Math.abs(offset.y) * 2) return;
+          const next = tabs[tabs.findIndex((t) => t.id === view) + (offset.x < 0 ? 1 : -1)];
+          if (!next) return;
+          haptic("light");
+          goTo(next.id);
+        }}
+      >
         <motion.section ref={board} className="pn-board" style={{ scale: boardScale, opacity: boardOpacity }} aria-label={state === "pre" ? `Начало ${when}` : `Счёт ${homeScore}:${awayScore}`}>
           <ClubTints home={match.home} away={match.away} />
           {[match.home, match.away].map((team, i) => (
@@ -300,9 +325,17 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
         </motion.section>
 
         {data && <MatchTimeline detail={data} match={match} />}
-        {tabs.length > 1 && <Segmented<View> label="Раздел матча" value={view} onChange={setChosen} options={tabs} />}
+        {tabs.length > 1 && <Segmented<View> label="Раздел матча" value={view} onChange={goTo} options={tabs} />}
         <AnimatePresence mode="wait" initial={false}>
-          <motion.div key={view} className="pn-stack" style={{ gap: 12 }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: M.dur.fast }}>
+          <motion.div
+            key={view}
+            className="pn-stack"
+            style={{ gap: 12 }}
+            initial={{ opacity: 0, x: direction * 28 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: M.dur.fast }}
+          >
             {view === "forecast" && <ForecastSection home={match.home.name} away={match.away.name} league={match.league} />}
             {view === "overview" && (
               <>
@@ -326,7 +359,7 @@ export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: Liv
             {data && view === "lineups" && <Pitch detail={data} match={match} />}
           </motion.div>
         </AnimatePresence>
-      </div>
+      </motion.div>
       {match.options.length > 0 && state !== "post" && (
         <div className="pn-detail__foot">
           <motion.button className="pn-btn pn-btn--ghost" style={{ width: "100%" }} whileTap={{ scale: M.press }} onClick={onBet}>

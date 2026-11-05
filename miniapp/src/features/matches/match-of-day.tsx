@@ -32,7 +32,7 @@ function useNow() {
 }
 
 /** The day's biggest match as a poster: both clubs' colours, crests, a live countdown. */
-export function MatchOfDay({ match }: { match: LiveMatch }) {
+export function MatchOfDay({ match, tag = "Матч дня" }: { match: LiveMatch; tag?: string }) {
   const { dispatch } = useGame();
   const { data: forecasts } = useForecasts();
   const now = useNow();
@@ -71,7 +71,7 @@ export function MatchOfDay({ match }: { match: LiveMatch }) {
               exit={{ y: -48, opacity: 0 }}
               transition={M.spring.snappy}
               onClick={() => dispatch({ type: "OPEN_MATCH", match })}
-              aria-label={`Матч дня: ${home.name} против ${away.name}, ${score ? `счёт ${score}` : `до начала ${clock}`}`}
+              aria-label={`${tag}: ${home.name} против ${away.name}, ${score ? `счёт ${score}` : `до начала ${clock}`}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- remote logo from the data feed */}
               <img src={home.logo} alt="" width={22} height={22} style={{ objectFit: "contain" }} />
@@ -92,10 +92,10 @@ export function MatchOfDay({ match }: { match: LiveMatch }) {
         transition={M.spring.gentle}
         whileTap={{ scale: 0.985 }}
         onClick={open}
-        aria-label={`Матч дня: ${home.name} против ${away.name}, ${score ? `счёт ${score}` : `до начала ${clock}`}`}
+        aria-label={`${tag}: ${home.name} против ${away.name}, ${score ? `счёт ${score}` : `до начала ${clock}`}`}
       >
         <ClubTints home={home} away={away} />
-        <span className="pn-motd__tag"><LeagueLogo league={match.league} size={14} /> Матч дня</span>
+        <span className="pn-motd__tag"><LeagueLogo league={match.league} size={14} /> {tag}</span>
         {[home, away].map((team, i) => (
           <span className="pn-motd__team" key={team.name} style={{ gridColumn: i ? 3 : 1, gridRow: 2, fontSize: teamNameSize(team.name) }}>
             <motion.img

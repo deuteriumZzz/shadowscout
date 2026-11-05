@@ -412,6 +412,8 @@
 .pn-feedbar { padding: 12px var(--gutter) 0; }
 .pn-logo { flex: none; width: 28px; height: 28px; object-fit: contain; }
 .pn-tile--static { cursor: default; }
+.pn-moment__flip { min-height: 58px; perspective: 600px; }
+.pn-moment__flip > div { transform-origin: 50% 50%; }
 .pn-fold summary { display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; cursor: pointer; list-style: none; }
 .pn-fold summary::-webkit-details-marker { display: none; }
 .pn-fold summary svg { flex: none; color: var(--tx2); transition: transform 0.18s; }

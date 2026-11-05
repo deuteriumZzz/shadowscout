@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { clubColor } from "../clubs.ts";
 import { betStatus } from "../bet-status.ts";
 import { ttlCache } from "./ttl-cache.ts";
-import { matchOfTheDay, normalizeEvent, normalizePrices, oddsAfterFee, positionName } from "./polymarket.ts";
+import { biggestMove, matchOfTheDay, normalizeEvent, normalizePrices, oddsAfterFee, positionName } from "./polymarket.ts";
 import { findGame, minuteValue, normalizeScoreboard, normalizeSummary, sameTeam } from "./espn.ts";
 
 // The feed cache: one load while fresh and for callers at once, a new one after, failures not kept.
@@ -26,6 +26,10 @@ failNext = true;
 await assert.rejects(cached());
 failNext = false;
 assert.equal(await cached(), 4, "a failure isn't kept");
+
+// A price move worth showing: the largest either way, and nothing for noise or a missing figure.
+assert.equal(biggestMove([{ title: "A", dayChange: 0.02 }, { title: "B", dayChange: -0.05 }, { title: "C", dayChange: null }]).title, "B");
+assert.equal(biggestMove([{ title: "A", dayChange: 0.005 }, { title: "B", dayChange: null }]), null);
 
 // Match of the day: the biggest market on the next day with football, never a finished one.
 const fixture = (id, start, volume, state) => ({ id, start, volume, espn: state && { state } });

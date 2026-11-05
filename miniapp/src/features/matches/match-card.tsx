@@ -5,7 +5,7 @@ import { ChevronRight, ExternalLink, Star } from "lucide-react";
 import { useRef, useState } from "react";
 import { advisedOption, forecastHint } from "@/features/forecast/forecast";
 import { useForecasts } from "@/hooks/use-shadowscout";
-import type { LiveMatch, LiveOption } from "@/lib/feeds/polymarket";
+import { biggestMove, type LiveMatch, type LiveOption } from "@/lib/feeds/polymarket";
 import { haptic, openLink } from "@/lib/telegram";
 import { useGame } from "@/store/app-store";
 import { FormPips, LeagueLogo } from "@/ui/football";
@@ -99,6 +99,8 @@ export function MatchCard({ match, index }: { match: LiveMatch; index: number })
   const { data: forecasts } = useForecasts();
   const hint = forecastHint(forecasts, `${match.home.name} - ${match.away.name}`);
   const advised = advisedOption(forecasts, `${match.home.name} - ${match.away.name}`);
+  const move = biggestMove(match.options);
+  const moveText = move?.dayChange ? `${move.title} ${move.dayChange > 0 ? "▲" : "▼"} ${Math.round(Math.abs(move.dayChange) * 100)} п. за сутки` : null;
   return (
     <motion.article
       ref={card}
@@ -152,7 +154,10 @@ export function MatchCard({ match, index }: { match: LiveMatch; index: number })
           {hint && <p className="pn-small" style={{ color: "var(--accent)", fontWeight: 600 }}>{hint}</p>}
           {match.options.length > 0 && (
             <div className="pn-row">
-              <p className="pn-small pn-muted">Объём {money(match.volume)}</p>
+              <div style={{ minWidth: 0 }}>
+                {moveText && <p className="pn-small" style={{ color: move!.dayChange! > 0 ? "var(--good)" : "var(--bad)" }}>{moveText}</p>}
+                <p className="pn-small pn-muted">Объём {money(match.volume)}</p>
+              </div>
               <motion.button className="pn-icon pn-match__link" aria-label={`${match.home.name} — ${match.away.name} на Polymarket`} whileTap={{ scale: 0.85 }} onClick={() => openLink(match.url)}>
                 <ExternalLink size={17} color="var(--tx2)" aria-hidden="true" />
               </motion.button>

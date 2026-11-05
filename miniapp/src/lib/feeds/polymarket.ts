@@ -25,6 +25,8 @@ export interface LiveOption {
   /** Decimal odds after the taker fee: what a bettor really gets. */
   odds: number;
   available: number;
+  /** How far the chance moved in a day, in shares of 1. Null when Polymarket has no figure. */
+  dayChange: number | null;
   /** The market's token for this outcome winning, for its price history. */
   tokenId?: string;
 }
@@ -59,6 +61,14 @@ export interface LiveMatch {
   options: LiveOption[];
 }
 
+const MOVE_MIN = 0.01;
+
+/** The outcome whose chance moved most in a day, if any moved by a point or more. */
+export function biggestMove(options: Pick<LiveOption, "title" | "dayChange">[]) {
+  const moved = options.filter((o) => Math.abs(o.dayChange ?? 0) >= MOVE_MIN);
+  return moved.length ? moved.reduce((a, b) => (Math.abs(b.dayChange ?? 0) > Math.abs(a.dayChange ?? 0) ? b : a)) : null;
+}
+
 /** The biggest market on the next day with football. A finished match can't be it. */
 export function matchOfTheDay(matches: LiveMatch[]): LiveMatch | null {
   const dayOf = (m: LiveMatch) => new Date(m.start).setHours(0, 0, 0, 0);
@@ -79,6 +89,7 @@ interface RawMarket {
   groupItemTitle?: string;
   sportsMarketType?: string;
   bestAsk?: number;
+  oneDayPriceChange?: number | null;
   liquidityNum?: number;
   clobTokenIds?: string;
   acceptingOrders?: boolean;
@@ -166,7 +177,7 @@ export function normalizeEvent(event: RawEvent, league: string, now: number): Li
     const price = market?.bestAsk;
     if (found.length !== 1 || !market?.acceptingOrders || !price || price <= 0 || price >= 1) return null;
     const rate = market.feesEnabled ? (market.feeSchedule?.rate ?? 0) : 0;
-    options.push({ id, title: optionTitle, price, odds: oddsAfterFee(price, rate), available: market.liquidityNum ?? 0, tokenId: firstToken(market.clobTokenIds) });
+    options.push({ id, title: optionTitle, price, odds: oddsAfterFee(price, rate), dayChange: market.oneDayPriceChange ?? null, available: market.liquidityNum ?? 0, tokenId: firstToken(market.clobTokenIds) });
   }
 
   return {
