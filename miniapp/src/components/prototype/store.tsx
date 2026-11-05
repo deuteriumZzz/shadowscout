@@ -17,6 +17,7 @@ import {
   type Moment,
   type Sim,
 } from "./engine";
+import type { LiveMatch } from "./polymarket";
 import { roar, startAmbient, stopAmbient, thud, whistle } from "./sound";
 import { haptic, hapticResult } from "@/lib/telegram";
 
@@ -116,6 +117,7 @@ export interface GameState {
   toasts: Toast[];
   nextId: number;
   sheet: SheetState;
+  openMatch: { match: LiveMatch; morph?: Morph } | null;
   flyer: Flyer | null;
   sound: boolean;
   calm: boolean;
@@ -148,6 +150,8 @@ export type Action =
   | { type: "REMIND"; pickId: number }
   | { type: "ODDS_MOVE" }
   | { type: "SHEET"; sheet: SheetState }
+  | { type: "OPEN_MATCH"; match: LiveMatch; morph?: Morph }
+  | { type: "CLOSE_MATCH" }
   | { type: "FLYER_DONE" }
   | { type: "SIM_START"; scenarioId: string }
   | { type: "SIM_TICK" }
@@ -205,6 +209,7 @@ function initial(calm: boolean): GameState {
     toasts: [],
     nextId: 1,
     sheet: null,
+    openMatch: null,
     flyer: null,
     sound: false,
     calm: saved.calm ?? calm,
@@ -340,6 +345,10 @@ export function reducer(s: GameState, a: Action): GameState {
       };
     case "SHEET":
       return { ...s, sheet: a.sheet };
+    case "OPEN_MATCH":
+      return { ...s, openMatch: { match: a.match, morph: a.morph } };
+    case "CLOSE_MATCH":
+      return { ...s, openMatch: null };
     case "FLYER_DONE":
       // Money lands first, then the bank rolls: the order is the whole effect.
       return s.flyer?.kind === "money" ? reducer({ ...s, flyer: null }, { type: "CONFIRM" }) : { ...s, flyer: null };

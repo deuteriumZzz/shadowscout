@@ -24,7 +24,7 @@ import {
   type DemoPick,
   type MarketOption,
 } from "./engine";
-import { CardIcon, Chip, Crest, FormPips, HelpButton, KeepyUppy, LeagueLogo, M, Odometer, RollDigit, ScrollCtx, Segmented, Sheet, useHold, useTeamColor } from "./fx";
+import { CardIcon, Chip, Crest, flyIn, flyOut, FormPips, HelpButton, KeepyUppy, LeagueLogo, M, Odometer, RollDigit, ScrollCtx, Segmented, Sheet, useHold, useTeamColor } from "./fx";
 import { thud } from "./sound";
 import { Lineups } from "./screen-live";
 import { MarketsView } from "./screen-markets";
@@ -50,67 +50,6 @@ const MINI_AFTER = 130;
 function readMorph(crests: Element | null, odds: Element | null): Morph {
   const get = (root: Element | null, key: string) => root?.querySelector<HTMLElement>(`[data-morph="${key}"]`) ?? undefined;
   return { home: get(crests, "home"), away: get(crests, "away"), odds: get(odds, "odds") };
-}
-
-/**
- * Grows the sheet out of the card: clones of the crests and odds fly from where
- * they sit to their place in the sheet. Clones rather than a shared layoutId,
- * because the target rides on a sheet that is itself sliding up.
- */
-function flyIn(morph: Morph, header: HTMLElement) {
-  const sheet = header.closest(".pn-sheet");
-  const phone = header.closest(".pn-phone");
-  const stage = header.closest(".pn-stage");
-  if (!sheet || !phone || !stage) return () => {};
-  const sheetRect = sheet.getBoundingClientRect();
-  // The sheet starts below the screen, so aim at where it will come to rest.
-  const dy = sheetRect.top - (phone.getBoundingClientRect().bottom - sheetRect.height);
-  const stops = (["home", "away", "odds"] as const).map((key) => {
-    const src = morph[key];
-    const to = header.querySelector<HTMLElement>(`[data-morph-to="${key}"]`);
-    if (!src || !to) return () => {};
-    const from = src.getBoundingClientRect();
-    const target = to.getBoundingClientRect();
-    const clone = src.cloneNode(true) as HTMLElement;
-    clone.style.cssText = `position:fixed;left:${from.left}px;top:${from.top}px;width:${from.width}px;height:${from.height}px;margin:0;z-index:40;transform-origin:top left;pointer-events:none`;
-    stage.append(clone);
-    src.style.visibility = "hidden";
-    to.style.visibility = "hidden";
-    const finish = () => {
-      clone.remove();
-      src.style.visibility = "";
-      to.style.visibility = "";
-    };
-    const flight = animate(clone, { x: target.left - from.left, y: target.top - dy - from.top, scale: target.width / from.width }, M.spring.sheet);
-    void flight.then(finish);
-    return () => {
-      flight.stop();
-      finish();
-    };
-  });
-  return () => stops.forEach((stop) => stop());
-}
-
-/** The way back: the same clones return from the sheet to the card as it closes. */
-function flyOut(morph: Morph, header: HTMLElement) {
-  const stage = header.closest(".pn-stage");
-  if (!stage) return;
-  for (const key of ["home", "away", "odds"] as const) {
-    const home = morph[key];
-    const from = header.querySelector<HTMLElement>(`[data-morph-to="${key}"]`);
-    if (!home?.isConnected || !from) continue;
-    const start = from.getBoundingClientRect();
-    const end = home.getBoundingClientRect();
-    const clone = from.cloneNode(true) as HTMLElement;
-    clone.style.cssText = `position:fixed;left:${start.left}px;top:${start.top}px;width:${start.width}px;height:${start.height}px;margin:0;z-index:40;transform-origin:top left;pointer-events:none`;
-    stage.append(clone);
-    home.style.visibility = "hidden";
-    const finish = () => {
-      clone.remove();
-      home.style.visibility = "";
-    };
-    void animate(clone, { x: end.left - start.left, y: end.top - start.top, scale: end.width / start.width }, M.spring.sheet).then(finish);
-  }
 }
 
 function useMorphIn(morph: Morph | undefined, calm: boolean) {

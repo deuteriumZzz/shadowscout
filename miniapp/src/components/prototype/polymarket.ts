@@ -25,6 +25,14 @@ export interface LiveOption {
   /** Decimal odds after the taker fee: what a bettor really gets. */
   odds: number;
   available: number;
+  /** The market's token for this outcome winning, for its price history. */
+  tokenId?: string;
+}
+
+export interface PricePoint {
+  /** Unix seconds. */
+  t: number;
+  p: number;
 }
 
 /** The linked game in the score feed, when one was found with confidence. */
@@ -63,6 +71,7 @@ interface RawMarket {
   sportsMarketType?: string;
   bestAsk?: number;
   liquidityNum?: number;
+  clobTokenIds?: string;
   acceptingOrders?: boolean;
   feesEnabled?: boolean;
   feeSchedule?: { rate?: number };
@@ -85,6 +94,25 @@ export function oddsAfterFee(price: number, feeRate: number) {
 
 /** How long after kick-off a match stays listed: it's live, so it matters more, not less. */
 export const STARTED_WINDOW_MS = 3 * 3_600_000;
+
+/** Polymarket sends the ids as a JSON string, with the "Yes" token first. */
+function firstToken(ids: string | undefined): string | undefined {
+  try {
+    const first = (JSON.parse(ids ?? "[]") as unknown[])[0];
+    return typeof first === "string" ? first : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Real trading prices only. A zero-resolution row is the market's settlement, not a price anyone traded at. */
+export function normalizePrices(raw: unknown): PricePoint[] {
+  const rows = (raw as { data?: unknown } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((r: { timestamp?: unknown; price?: unknown; resolution_seconds?: unknown }) =>
+    typeof r?.timestamp === "number" && typeof r?.price === "number" && r.resolution_seconds !== 0 ? [{ t: r.timestamp, p: r.price }] : [],
+  );
+}
 
 const shortName = (name: string) => name.replace(/\s+(FC|AFC|CF|SC)$/, "").trim();
 
@@ -117,7 +145,7 @@ export function normalizeEvent(event: RawEvent, league: string, now: number): Li
     const price = market?.bestAsk;
     if (found.length !== 1 || !market?.acceptingOrders || !price || price <= 0 || price >= 1) return null;
     const rate = market.feesEnabled ? (market.feeSchedule?.rate ?? 0) : 0;
-    options.push({ id, title: optionTitle, price, odds: oddsAfterFee(price, rate), available: market.liquidityNum ?? 0 });
+    options.push({ id, title: optionTitle, price, odds: oddsAfterFee(price, rate), available: market.liquidityNum ?? 0, tokenId: firstToken(market.clobTokenIds) });
   }
 
   return {

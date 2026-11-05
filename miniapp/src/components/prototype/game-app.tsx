@@ -12,6 +12,8 @@ import { BankScreen, SettingsScreen, StatsScreen } from "./screen-club";
 import { LiveScreen } from "./screen-live";
 import { GoalAlerts } from "./screen-markets";
 import { BetsScreen, Sheets, SlipBar } from "./screen-matchday";
+import { openLink } from "./screen-forecast";
+import { MatchDetailScreen } from "./screen-match-detail";
 import { SettledMoments } from "./screen-moments";
 import { WeekStories } from "./screen-stories";
 import { GameProvider, TABS, useGame, type Tab, type ThemeChoice } from "./store";
@@ -261,6 +263,19 @@ function StopOverlay() {
   );
 }
 
+/** One match screen for the whole app, so Telegram's Back button can reach it from any tab. */
+function MatchLayer() {
+  const { state, dispatch } = useGame();
+  const opened = state.openMatch;
+  return (
+    <AnimatePresence>
+      {opened && (
+        <MatchDetailScreen key={opened.match.id} match={opened.match} morph={opened.morph} onClose={() => dispatch({ type: "CLOSE_MATCH" })} onBet={() => openLink(opened.match.url)} />
+      )}
+    </AnimatePresence>
+  );
+}
+
 function Toasts() {
   const { state, dispatch } = useGame();
   const toast = state.toasts[0];
@@ -443,17 +458,17 @@ function useTelegramChrome(theme: "light" | "dark") {
   const tg = getWebApp() as unknown as TelegramChrome | undefined;
   const real = !!tg?.initData;
   const hasBack = real && !!tg?.BackButton && !!tg?.isVersionAtLeast?.("6.1");
-  const canGoBack = !!state.sheet || state.tab !== "bets";
+  const canGoBack = !!state.openMatch || !!state.sheet || state.tab !== "bets";
 
   useEffect(() => {
     if (!hasBack) return;
     const back = tg!.BackButton!;
-    const onBack = () => dispatch(state.sheet ? { type: "SHEET", sheet: null } : { type: "TAB", tab: "bets" });
+    const onBack = () => dispatch(state.openMatch ? { type: "CLOSE_MATCH" } : state.sheet ? { type: "SHEET", sheet: null } : { type: "TAB", tab: "bets" });
     if (canGoBack) back.show();
     else back.hide();
     back.onClick(onBack);
     return () => back.offClick(onBack);
-  }, [hasBack, tg, canGoBack, state.sheet, dispatch]);
+  }, [hasBack, tg, canGoBack, state.openMatch, state.sheet, dispatch]);
 
   useEffect(() => {
     if (!real || !tg?.isVersionAtLeast?.("6.1")) return;
@@ -516,6 +531,7 @@ function Shell() {
           <Toasts />
           <GoalAlerts />
           <SettledMoments />
+          <MatchLayer />
           <Sheets />
           <StopOverlay />
           <AnimatePresence>{state.stories && <WeekStories key="stories" />}</AnimatePresence>

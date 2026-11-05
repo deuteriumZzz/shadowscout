@@ -403,6 +403,21 @@
 .pn-story__duel { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; }
 .pn-story__zone { position: absolute; top: 60px; bottom: 0; z-index: 1; width: 40%; }
 
+/* --- Match timeline and folding board --- */
+.pn-detail__head { position: relative; }
+.pn-detail__mini { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 10px; padding-top: max(env(safe-area-inset-top), 8px); pointer-events: none; }
+.pn-detail__mini img { object-fit: contain; }
+.pn-detail__mini b { font-size: 20px; font-weight: 500; }
+.pn-detail__head .pn-icon { position: relative; z-index: 1; }
+.pn-tline { display: flex; flex-direction: column; gap: 2px; padding: 4px 12px 10px; border-radius: var(--r-m, 14px); background: var(--s1); }
+.pn-tline__plot { position: relative; margin-inline: 6px; }
+.pn-tline__track { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 4px; background: var(--s3); overflow: hidden; }
+.pn-tline__track i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
+.pn-tline__track b { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--s1); }
+.pn-tline__mark { position: absolute; display: grid; place-items: center; width: 28px; height: 28px; margin-left: -14px; }
+.pn-tline__mark[data-kind="goal"] { z-index: 2; }
+.pn-tline__mark[aria-pressed="true"] { border-radius: 50%; background: var(--s3); }
+
 /* --- Real forecast and price moves --- */
 .pn-table td:first-child .pn-obars { display: grid; grid-template-columns: 1fr; gap: 2px; width: 100%; max-width: 170px; margin-top: 5px; }
 .pn-obars i { display: block; height: 4px; border-radius: 4px; transform-origin: left; }

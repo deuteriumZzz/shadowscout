@@ -1,15 +1,19 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useIsPresent, useScroll, useTransform } from "framer-motion";
 import { ArrowLeftRight, ExternalLink, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EventKind, Lineup, MatchDetail as Detail, TableRow } from "./espn";
 import { ForecastSection } from "./screen-forecast";
-import { Ball, CardIcon, FormPips, M, RollDigit, Segmented } from "./fx";
+import { Ball, CardIcon, flyIn, flyOut, FormPips, M, RollDigit, Segmented, type Morph } from "./fx";
+import { MatchTimeline, PriceLine } from "./screen-match-charts";
+import { useGame } from "./store";
 import type { LiveMatch } from "./polymarket";
 
+const MINI_FADE_START = 50;
+const BOARD_FADE_END = 100;
 const LIVE_REFRESH_MS = 20_000;
 const IDLE_REFRESH_MS = 120_000;
 
@@ -181,8 +185,29 @@ async function fetchDetail(id: string, code: string): Promise<Detail> {
 }
 
 /** The real match centre: refreshes by itself, faster while the match is on. */
-export function MatchDetailScreen({ match, onClose, onBet }: { match: LiveMatch; onClose: () => void; onBet: () => void }) {
+export function MatchDetailScreen({ match, morph, onClose, onBet }: { match: LiveMatch; morph?: Morph; onClose: () => void; onBet: () => void }) {
+  const { state: { calm } } = useGame();
   const espn = match.espn;
+  const body = useRef<HTMLDivElement>(null);
+  const board = useRef<HTMLElement>(null);
+
+  // The crests fly out of the card into the board, and back on closing, however it was closed.
+  useLayoutEffect(() => {
+    if (!morph || calm || !board.current) return;
+    return flyIn(morph, board.current);
+  }, [morph, calm]);
+  const present = useIsPresent();
+  useLayoutEffect(() => {
+    if (!present && morph && !calm && board.current && (body.current?.scrollTop ?? 0) < BOARD_FADE_END / 2) flyOut(morph, board.current);
+  }, [present, morph, calm]);
+
+  // Scrolling folds the big board into a thin bar, so the score stays in sight.
+  const { scrollY } = useScroll({ container: body });
+  const miniOpacity = useTransform(scrollY, [MINI_FADE_START, BOARD_FADE_END], [0, 1]);
+  const leagueOpacity = useTransform(scrollY, [MINI_FADE_START, BOARD_FADE_END], [1, 0]);
+  const boardScale = useTransform(scrollY, [0, BOARD_FADE_END], [1, 0.94]);
+  const boardOpacity = useTransform(scrollY, [0, BOARD_FADE_END], [1, 0.35]);
+
   const [view, setView] = useState<View>("overview");
   const { data, isPending, isError, refetch } = useQuery({
     queryKey: ["match-detail", espn?.id],
@@ -210,15 +235,27 @@ export function MatchDetailScreen({ match, onClose, onBet }: { match: LiveMatch;
   return createPortal(
     <motion.div className="pn-detail" role="dialog" aria-modal="true" aria-label={`${match.home.name} против ${match.away.name}`} initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={M.spring.sheet}>
       <header className="pn-detail__head">
-        <span className="pn-small pn-muted" style={{ flex: 1 }}>{match.league}</span>
+        <motion.span className="pn-small pn-muted" style={{ flex: 1, opacity: leagueOpacity }}>{match.league}</motion.span>
+        <motion.div className="pn-detail__mini" style={{ opacity: miniOpacity }} aria-hidden="true">
+          {/* eslint-disable-next-line @next/next/no-img-element -- remote logo from the data feed */}
+          <img src={match.home.logo} alt="" width={22} height={22} />
+          {state === "pre" ? (
+            <span className="pn-small pn-muted">{new Date(match.start).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
+          ) : (
+            <b className="pn-num">{homeScore}:{awayScore}</b>
+          )}
+          {/* eslint-disable-next-line @next/next/no-img-element -- remote logo from the data feed */}
+          <img src={match.away.logo} alt="" width={22} height={22} />
+          {state === "in" && <span className="pn-small" style={{ color: "var(--live)" }}>{clock}</span>}
+        </motion.div>
         <button className="pn-icon" aria-label="Закрыть" onClick={onClose}><X size={22} aria-hidden="true" /></button>
       </header>
-      <div className="pn-detail__body">
-        <section className="pn-board" aria-label={state === "pre" ? `Начало ${when}` : `Счёт ${homeScore}:${awayScore}`}>
+      <div className="pn-detail__body" ref={body}>
+        <motion.section ref={board} className="pn-board" style={{ scale: boardScale, opacity: boardOpacity }} aria-label={state === "pre" ? `Начало ${when}` : `Счёт ${homeScore}:${awayScore}`}>
           {[match.home, match.away].map((team, i) => (
             <div className="pn-board__team" key={team.name} style={{ gridColumn: i ? 3 : 1, gridRow: 1 }}>
               {/* eslint-disable-next-line @next/next/no-img-element -- remote logo from the data feed */}
-              <img src={team.logo} alt="" width={54} height={54} style={{ objectFit: "contain" }} />
+              <img src={team.logo} alt="" width={54} height={54} style={{ objectFit: "contain" }} data-morph-to={i ? "away" : "home"} />
               {team.name}
             </div>
           ))}
@@ -239,9 +276,11 @@ export function MatchDetailScreen({ match, onClose, onBet }: { match: LiveMatch;
               </>
             )}
           </div>
-        </section>
+        </motion.section>
 
+        {data && <MatchTimeline detail={data} match={match} />}
         {match.options.length > 0 && state === "pre" && <ForecastSection home={match.home.name} away={match.away.name} league={match.league} />}
+        <PriceLine match={match} detail={data} />
 
         {!espn ? (
           <Empty>Для этого матча нет подробных данных: мы не смогли надёжно найти его в источнике статистики.</Empty>

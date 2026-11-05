@@ -137,6 +137,8 @@ export interface MatchEventRow {
   player: string;
   /** The assist for a goal, or the player coming off for a substitution. */
   other: string | null;
+  /** When it really happened, as ISO time, for lining it up with prices. */
+  at: string | null;
 }
 
 export interface StatRow {
@@ -175,6 +177,12 @@ export interface MatchDetail {
   lineups: { home: Lineup; away: Lineup } | null;
   form: { home: FormLetter[]; away: FormLetter[] };
   table: { home: TableRow | null; away: TableRow | null };
+}
+
+/** "45'+3'" as 48. Null when there's no clock to read, rather than a guessed zero. */
+export function minuteValue(minute: string): number | null {
+  const parts = minute.match(/\d+/g);
+  return parts ? parts.slice(0, 2).reduce((sum, n) => sum + Number(n), 0) : null;
 }
 
 const STAT_ROWS: [string, string, boolean][] = [
@@ -262,6 +270,7 @@ export function normalizeSummary(data: Raw): MatchDetail {
       side: team === homeName ? "home" : team === awayName ? "away" : null,
       player: names[0] ?? String(e?.shortText ?? ""),
       other: names[1] ?? null,
+      at: e?.wallclock ? String(e.wallclock) : null,
     });
   }
 

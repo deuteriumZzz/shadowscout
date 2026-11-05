@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Chip, FormPips, LeagueLogo, M, RollDigit } from "./fx";
 import type { LiveMatch, LiveOption } from "./polymarket";
 import { forecastHint, pickName } from "./screen-forecast";
-import { MatchDetailScreen } from "./screen-match-detail";
+import { useGame } from "./store";
 import { WalletPositions } from "./screen-wallet";
 import { useForecasts, useOpenPicks } from "@/hooks/use-shadowscout";
 import { getWebApp, haptic } from "@/lib/telegram";
@@ -40,9 +40,9 @@ function dayLabel(iso: string, now: number) {
 }
 
 /** A real crest from the feed. Remote and already sized, so a plain image is right. */
-function TeamLogo({ src, alt }: { src: string; alt: string }) {
+function TeamLogo({ src, alt, morph }: { src: string; alt: string; morph?: string }) {
   // eslint-disable-next-line @next/next/no-img-element -- remote logo from the data feed
-  return <img className="pn-logo" src={src} alt={alt} width={28} height={28} loading="lazy" />;
+  return <img className="pn-logo" src={src} alt={alt} width={28} height={28} loading="lazy" data-morph={morph} />;
 }
 
 function OddsTile({ option }: { option: LiveOption }) {
@@ -192,7 +192,13 @@ function OpenPicks({ matches }: { matches: LiveMatch[] }) {
   );
 }
 
-function MatchCard({ match, index, onOpen }: { match: LiveMatch; index: number; onOpen: () => void }) {
+function MatchCard({ match, index }: { match: LiveMatch; index: number }) {
+  const { dispatch } = useGame();
+  const card = useRef<HTMLElement>(null);
+  function open() {
+    const logo = (key: string) => card.current?.querySelector<HTMLElement>(`[data-morph="${key}"]`) ?? undefined;
+    dispatch({ type: "OPEN_MATCH", match, morph: { home: logo("home"), away: logo("away") } });
+  }
   const time = new Date(match.start).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   const thinnest = match.options.length ? Math.min(...match.options.map((o) => o.available)) : 0;
   const espn = match.espn;
@@ -201,6 +207,7 @@ function MatchCard({ match, index, onOpen }: { match: LiveMatch; index: number; 
   const hint = forecastHint(forecasts, `${match.home.name} - ${match.away.name}`);
   return (
     <motion.article
+      ref={card}
       className="pn-match"
       layout
       initial={{ opacity: 0, y: 14 }}
@@ -222,7 +229,7 @@ function MatchCard({ match, index, onOpen }: { match: LiveMatch; index: number; 
           const form = i ? espn?.awayForm : espn?.homeForm;
           return (
             <div className="pn-teamrow" key={team.name}>
-              <TeamLogo src={team.logo} alt="" />
+              <TeamLogo src={team.logo} alt="" morph={i ? "away" : "home"} />
               <span className="pn-teamrow__name">{team.name}</span>
               {live ? (
                 <span className="pn-num" style={{ marginLeft: "auto", fontSize: 22 }}><RollDigit value={i ? espn.awayScore : espn.homeScore} /></span>
@@ -244,7 +251,7 @@ function MatchCard({ match, index, onOpen }: { match: LiveMatch; index: number; 
         )}
         {hint && <p className="pn-small" style={{ color: "var(--accent)", fontWeight: 600 }}>{hint}</p>}
         <div className={match.options.length > 0 ? "pn-grid2" : "pn-stack"}>
-          <motion.button className="pn-btn pn-btn--primary" whileTap={{ scale: M.press }} onClick={onOpen}>Матч и прогноз</motion.button>
+          <motion.button className="pn-btn pn-btn--primary" whileTap={{ scale: M.press }} onClick={open}>Матч и прогноз</motion.button>
           {match.options.length > 0 && (
             <motion.button className="pn-btn pn-btn--ghost" whileTap={{ scale: M.press }} onClick={() => openLink(match.url)}>
               <ExternalLink size={17} aria-hidden="true" /> Polymarket
@@ -260,7 +267,6 @@ function MatchCard({ match, index, onOpen }: { match: LiveMatch; index: number; 
 export function MarketsView() {
   const { data, isPending, isError, refetch, isFetching, dataUpdatedAt } = useMatches();
   const [league, setLeague] = useState("all");
-  const [opened, setOpened] = useState<LiveMatch | null>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 5000);
@@ -325,7 +331,7 @@ export function MarketsView() {
         <section className="pn-stack" key={day} style={{ gap: 10 }}>
           <h2 className="pn-h2">{day}</h2>
           <AnimatePresence mode="popLayout" initial={false}>
-            {list.map((m, i) => <MatchCard key={m.id} match={m} index={i} onOpen={() => setOpened(m)} />)}
+            {list.map((m, i) => <MatchCard key={m.id} match={m} index={i} />)}
           </AnimatePresence>
         </section>
       ))}
@@ -340,9 +346,6 @@ export function MarketsView() {
       <p className="pn-small pn-muted" style={{ textAlign: "center" }}>
         Настоящие цены Polymarket, счёт и статистика ESPN. Кэфы показаны с учётом комиссии{data?.partial ? ", часть данных сейчас недоступна" : ""}.
       </p>
-      <AnimatePresence>
-        {opened && <MatchDetailScreen key={opened.id} match={opened} onClose={() => setOpened(null)} onBet={() => openLink(opened.url)} />}
-      </AnimatePresence>
     </div>
   );
 }
@@ -350,7 +353,6 @@ export function MarketsView() {
 /** The real "on right now" list for the Live tab. */
 export function LiveNowSection() {
   const { data, isPending } = useMatches();
-  const [opened, setOpened] = useState<LiveMatch | null>(null);
   const matches = useMemo(() => data?.matches ?? [], [data]);
   const live = matches.filter((m) => m.espn?.state === "in");
   const next = matches.find((m) => m.espn?.state !== "in");
@@ -364,13 +366,10 @@ export function LiveNowSection() {
         </p>
       )}
       <AnimatePresence initial={false} mode="popLayout">
-        {live.map((m, i) => <MatchCard key={m.id} match={m} index={i} onOpen={() => setOpened(m)} />)}
+        {live.map((m, i) => <MatchCard key={m.id} match={m} index={i} />)}
       </AnimatePresence>
       <WalletPositions matches={matches} />
       <OpenPicks matches={matches} />
-      <AnimatePresence>
-        {opened && <MatchDetailScreen key={opened.id} match={opened} onClose={() => setOpened(null)} onBet={() => openLink(opened.url)} />}
-      </AnimatePresence>
     </section>
   );
 }

@@ -22,8 +22,8 @@ import {
   trackedBets,
 } from "./engine.ts";
 
-import { normalizeEvent, oddsAfterFee } from "./polymarket.ts";
-import { findGame, normalizeScoreboard, normalizeSummary, sameTeam } from "./espn.ts";
+import { normalizeEvent, normalizePrices, oddsAfterFee } from "./polymarket.ts";
+import { findGame, minuteValue, normalizeScoreboard, normalizeSummary, sameTeam } from "./espn.ts";
 
 const [arsenalPick, totalPick, , sevillaPick] = DEMO_PICKS;
 const arsenal = betFrom(arsenalPick, "1", 1500);
@@ -138,6 +138,13 @@ assert.equal(normalizeEvent({ ...pmEvent, markets: [...pmEvent.markets, market("
 assert.equal(normalizeEvent({ ...pmEvent, markets: pmEvent.markets.map((m) => ({ ...m, acceptingOrders: false })) }, "x", before), null, "not taking orders");
 assert.equal(normalizeEvent({ ...pmEvent, markets: pmEvent.markets.map((m) => ({ ...m, bestAsk: undefined })) }, "x", before), null, "no price");
 assert.equal(normalizeEvent({ ...pmEvent, teams: [pmEvent.teams[0]] }, "x", before), null, "a team is missing");
+
+// The match clock and real prices.
+assert.equal(minuteValue("49'"), 49);
+assert.equal(minuteValue("45'+3'"), 48);
+assert.equal(minuteValue(""), null, "no clock isn't minute zero");
+assert.deepEqual(normalizePrices({ data: [{ timestamp: 10, price: 0.44, resolution_seconds: 60 }, { timestamp: 20, price: 0, resolution_seconds: 0 }, { price: 0.5 }] }), [{ t: 10, p: 0.44 }], "settlement and broken rows aren't prices");
+assert.deepEqual(normalizePrices(null), []);
 
 // Pairing feeds: the names differ, and a wrong link would show another match's statistics.
 for (const [a, b] of [["Bayern Munich", "FC Bayern München"], ["Monchengladbach", "Borussia Mönchengladbach"], ["Man United", "Manchester United FC"], ["Strasbourg", "RC Strasbourg Alsace"], ["Alavés", "Deportivo Alavés"], ["Leverkusen", "Bayer 04 Leverkusen"], ["Mainz", "1. FSV Mainz 05"], ["Espanyol", "RCD Espanyol de Barcelona"], ["Hamburg SV", "Hamburger SV"], ["Brest", "Stade Brestois 29"], ["Lyon", "Olympique Lyonnais"], ["Internazionale", "FC Internazionale Milano"], ["Como", "Como 1907"], ["Troyes", "ES Troyes AC"], ["Stade Rennais", "Stade Rennais FC 1901"], ["PSG", "Paris Saint-Germain"]]) {
